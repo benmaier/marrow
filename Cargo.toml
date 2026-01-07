@@ -16,7 +16,7 @@ serde_json = "1"
 [package.metadata.bundle]
 name = "Marrow"
 identifier = "com.marrow.app"
-icon = ["assets/icon.icns"]
+icon = ["icon.icns"]
 category = "public.app-category.developer-tools"
 
 [profile.release]

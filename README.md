@@ -32,6 +32,17 @@ cargo build --release
 
 The binary will be at `target/release/marrow`.
 
+### macOS App Bundle
+
+To create a proper macOS `.app` bundle:
+
+```bash
+cargo install cargo-bundle
+cargo bundle --release
+```
+
+The app will be at `target/release/bundle/osx/Marrow.app`.
+
 ## Usage
 
 ```bash
@@ -40,9 +51,9 @@ marrow path/to/file.md
 
 ## Dependencies
 
-- [wry](https://github.com/nicholaswaite/nicholaswaite) - Cross-platform webview
+- [wry](https://github.com/nicholaswaite/nicholaswaite) - Cross-platform webview (WebKit on macOS)
 - [tao](https://github.com/nicholaswaite/nicholaswaite) - Window management
-- [pulldown-cmark](https://github.com/nicholaswaite/nicholaswaite) - Markdown parsing with GFM support
+- [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) - Markdown parsing with GFM support
 
 ## License
 
