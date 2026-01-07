@@ -9,9 +9,10 @@ use tao::{
 };
 use wry::WebViewBuilder;
 
-const WIDTH_WITHOUT_TOC: f64 = 750.0;
-const WIDTH_WITH_TOC: f64 = 1000.0;
-const HEIGHT: f64 = 700.0;
+// A4 aspect ratio is 1:1.414 (width:height)
+const WIDTH_WITHOUT_TOC: f64 = 595.0;  // A4-ish width
+const WIDTH_WITH_TOC: f64 = 820.0;     // + 225 for TOC
+const HEIGHT: f64 = 842.0;             // 595 * 1.414 ≈ 842
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_path = std::env::args().nth(1).map(|arg| {
@@ -54,6 +55,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 _ => {}
             }
+        })
+        .with_navigation_handler(|url| {
+            // Allow internal navigation (about:blank, data:, etc.)
+            if url.starts_with("about:") || url.starts_with("data:") {
+                return true;
+            }
+            // Open external URLs in system browser
+            if url.starts_with("http://") || url.starts_with("https://") {
+                let _ = std::process::Command::new("open").arg(&url).spawn();
+                return false;
+            }
+            true
         })
         .build(&window)?;
 
@@ -171,10 +184,18 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
             {}
         </nav>
     </div>
+    <div class="search-bar hidden" id="search-bar">
+        <input type="text" id="search-input" placeholder="Search..." />
+        <span id="search-count"></span>
+        <button onclick="searchPrev()">↑</button>
+        <button onclick="searchNext()">↓</button>
+        <button onclick="closeSearch()">✕</button>
+    </div>
     <div class="hotkey-bar">
         <span><kbd>G</kbd> GitHub</span>
         <span><kbd>T</kbd> Terminal</span>
         <span><kbd>C</kbd> Contents</span>
+        <span><kbd>⌘F</kbd> Search</span>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>{}</script>
@@ -266,7 +287,7 @@ body {
 
 .container {
     display: flex;
-    height: calc(100vh - 20px);
+    height: calc(100vh - 34px);
 }
 
 .toc {
@@ -288,14 +309,14 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    height: 20px;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border-color);
     display: flex;
     align-items: center;
-    padding: 0 12px;
-    gap: 16px;
-    font-size: 10px;
+    justify-content: flex-start;
+    padding: 7px 16px 9px;
+    gap: 20px;
+    font-size: 11px;
     color: var(--text-muted);
 }
 
@@ -303,10 +324,75 @@ body {
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 3px;
-    padding: 1px 4px;
+    padding: 2px 6px;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-    font-size: 9px;
-    margin-right: 4px;
+    font-size: 10px;
+    margin-right: 5px;
+}
+
+.search-bar {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.search-bar.hidden {
+    display: none;
+}
+
+.search-bar input {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: var(--text-primary);
+    font-size: 13px;
+    width: 200px;
+    outline: none;
+}
+
+.search-bar input:focus {
+    border-color: var(--accent-color);
+}
+
+.search-bar button {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.search-bar button:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.search-bar #search-count {
+    color: var(--text-muted);
+    font-size: 11px;
+    min-width: 50px;
+}
+
+mark.search-highlight {
+    background: #5c4d1a;
+    color: var(--text-primary);
+    border-radius: 2px;
+}
+
+mark.search-highlight.current {
+    background: #7a6520;
 }
 
 .toc-item {
@@ -519,7 +605,20 @@ function scrollToHeading(slug) {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
-    // Ignore if typing in input
+    // Cmd+F for search
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        openSearch();
+        return;
+    }
+
+    // Escape to close search
+    if (e.key === 'Escape') {
+        closeSearch();
+        return;
+    }
+
+    // Ignore other shortcuts if typing in input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     switch(e.key.toLowerCase()) {
@@ -532,6 +631,124 @@ document.addEventListener('keydown', function(e) {
         case 'c':
             toggleToc();
             break;
+    }
+});
+
+// Search functionality
+let searchMatches = [];
+let currentMatchIndex = -1;
+
+function openSearch() {
+    const searchBar = document.getElementById('search-bar');
+    searchBar.classList.remove('hidden');
+    document.getElementById('search-input').focus();
+}
+
+function closeSearch() {
+    const searchBar = document.getElementById('search-bar');
+    searchBar.classList.add('hidden');
+    clearHighlights();
+    document.getElementById('search-input').value = '';
+    document.getElementById('search-count').textContent = '';
+}
+
+function clearHighlights() {
+    document.querySelectorAll('mark.search-highlight').forEach(mark => {
+        const parent = mark.parentNode;
+        parent.replaceChild(document.createTextNode(mark.textContent), mark);
+        parent.normalize();
+    });
+    searchMatches = [];
+    currentMatchIndex = -1;
+}
+
+function performSearch(query) {
+    clearHighlights();
+    if (!query || query.length < 2) {
+        document.getElementById('search-count').textContent = '';
+        return;
+    }
+
+    const activeView = currentMode === 'github' ? document.getElementById('github-view') : document.getElementById('terminal-view');
+    const walker = document.createTreeWalker(activeView, NodeFilter.SHOW_TEXT, null, false);
+    const textNodes = [];
+
+    while (walker.nextNode()) {
+        textNodes.push(walker.currentNode);
+    }
+
+    const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+
+    textNodes.forEach(node => {
+        const text = node.textContent;
+        if (regex.test(text)) {
+            regex.lastIndex = 0;
+            const fragment = document.createDocumentFragment();
+            let lastIndex = 0;
+            let match;
+
+            while ((match = regex.exec(text)) !== null) {
+                if (match.index > lastIndex) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                }
+                const mark = document.createElement('mark');
+                mark.className = 'search-highlight';
+                mark.textContent = match[0];
+                fragment.appendChild(mark);
+                lastIndex = regex.lastIndex;
+            }
+
+            if (lastIndex < text.length) {
+                fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+            }
+
+            node.parentNode.replaceChild(fragment, node);
+        }
+    });
+
+    searchMatches = Array.from(document.querySelectorAll('mark.search-highlight'));
+    currentMatchIndex = searchMatches.length > 0 ? 0 : -1;
+    updateSearchCount();
+    highlightCurrentMatch();
+}
+
+function updateSearchCount() {
+    const count = searchMatches.length;
+    const current = currentMatchIndex + 1;
+    document.getElementById('search-count').textContent = count > 0 ? `${current}/${count}` : 'No results';
+}
+
+function highlightCurrentMatch() {
+    searchMatches.forEach((m, i) => {
+        m.classList.toggle('current', i === currentMatchIndex);
+    });
+    if (searchMatches[currentMatchIndex]) {
+        searchMatches[currentMatchIndex].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+function searchNext() {
+    if (searchMatches.length === 0) return;
+    currentMatchIndex = (currentMatchIndex + 1) % searchMatches.length;
+    updateSearchCount();
+    highlightCurrentMatch();
+}
+
+function searchPrev() {
+    if (searchMatches.length === 0) return;
+    currentMatchIndex = (currentMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+    updateSearchCount();
+    highlightCurrentMatch();
+}
+
+// Search input handler
+document.getElementById('search-input').addEventListener('input', function(e) {
+    performSearch(e.target.value);
+});
+
+document.getElementById('search-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.shiftKey ? searchPrev() : searchNext();
     }
 });
 
