@@ -1,11 +1,17 @@
 use pulldown_cmark::{html, Options, Parser, HeadingLevel, Event, Tag, TagEnd};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tao::{
+    dpi::LogicalSize,
     event::{Event as TaoEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 use wry::WebViewBuilder;
+
+const WIDTH_WITHOUT_TOC: f64 = 750.0;
+const WIDTH_WITH_TOC: f64 = 1000.0;
+const HEIGHT: f64 = 700.0;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_path = std::env::args().nth(1).map(|arg| {
@@ -29,11 +35,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title(format!("Marrow - {}", filename))
-        .with_inner_size(tao::dpi::LogicalSize::new(1100.0, 750.0))
+        .with_inner_size(LogicalSize::new(WIDTH_WITHOUT_TOC, HEIGHT))
         .build(&event_loop)?;
+
+    let window = Arc::new(window);
+    let window_clone = Arc::clone(&window);
 
     let _webview = WebViewBuilder::new()
         .with_html(&full_html)
+        .with_ipc_handler(move |req| {
+            let msg = req.body();
+            match msg.as_str() {
+                "toc_show" => {
+                    window_clone.set_inner_size(LogicalSize::new(WIDTH_WITH_TOC, HEIGHT));
+                }
+                "toc_hide" => {
+                    window_clone.set_inner_size(LogicalSize::new(WIDTH_WITHOUT_TOC, HEIGHT));
+                }
+                _ => {}
+            }
+        })
         .build(&window)?;
 
     event_loop.run(move |event, _, control_flow| {
@@ -117,7 +138,7 @@ fn slugify(text: &str) -> String {
         .join("-")
 }
 
-fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], filename: &str) -> String {
+fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str) -> String {
     let toc_html: String = toc
         .iter()
         .map(|(level, text)| {
@@ -142,30 +163,29 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
     <style>{}</style>
 </head>
 <body>
-    <div class="toolbar">
-        <button id="github-btn" class="mode-btn active" onclick="setMode('github')">GitHub</button>
-        <button id="terminal-btn" class="mode-btn" onclick="setMode('terminal')">Terminal</button>
-        <span class="filename">{}</span>
-    </div>
     <div class="container">
-        <nav class="toc">
-            <div class="toc-header">Contents</div>
-            {}
-        </nav>
         <main class="content github" id="content">
             <div id="github-view" class="view-content">{}</div>
             <pre id="terminal-view" class="view-content" style="display:none;"><code>{}</code></pre>
         </main>
+        <nav class="toc hidden" id="toc">
+            <div class="toc-header">Contents</div>
+            {}
+        </nav>
+    </div>
+    <div class="hotkey-bar">
+        <span><kbd>G</kbd> GitHub</span>
+        <span><kbd>T</kbd> Terminal</span>
+        <span><kbd>C</kbd> Contents</span>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>{}</script>
 </body>
 </html>"##,
         CSS,
-        html_escape(filename),
-        toc_html,
         content_with_ids,
         raw_markdown_escaped,
+        toc_html,
         JS
     )
 }
@@ -243,81 +263,77 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     overflow: hidden;
-}
-
-.toolbar {
-    display: flex;
-    align-items: center;
-    padding: 8px 16px;
-    background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border-color);
-    gap: 8px;
-}
-
-.mode-btn {
-    padding: 6px 12px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-tertiary);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: 13px;
-    transition: all 0.15s ease;
-}
-
-.mode-btn:hover {
-    background: var(--border-color);
-    color: var(--text-primary);
-}
-
-.mode-btn.active {
-    background: var(--accent-color);
-    border-color: var(--accent-color);
-    color: white;
-}
-
-.filename {
-    margin-left: auto;
-    color: var(--text-muted);
-    font-size: 13px;
+    font-size: 15px;
 }
 
 .container {
     display: flex;
-    height: calc(100vh - 45px);
+    height: calc(100vh - 20px);
 }
 
 .toc {
-    width: 250px;
-    min-width: 200px;
+    width: 200px;
+    min-width: 150px;
     background: var(--bg-secondary);
-    border-right: 1px solid var(--border-color);
+    border-left: 1px solid var(--border-color);
     overflow-y: auto;
-    padding: 16px 0;
+    padding: 12px 0;
+    order: 2;
+}
+
+.toc.hidden {
+    display: none;
+}
+
+.hotkey-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.hotkey-bar kbd {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 9px;
+    margin-right: 4px;
 }
 
 .toc-header {
-    padding: 0 16px 12px;
+    padding: 0 12px 8px;
     font-weight: 600;
+    font-size: 11px;
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-color);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
 }
 
 .toc-item {
     display: block;
-    padding: 6px 16px;
+    padding: 4px 12px;
     color: var(--text-secondary);
     text-decoration: none;
-    font-size: 13px;
-    border-left: 2px solid transparent;
+    font-size: 10px;
+    border-right: 2px solid transparent;
     transition: all 0.15s ease;
 }
 
 .toc-item:hover {
     color: var(--text-primary);
     background: var(--bg-tertiary);
-    border-left-color: var(--accent-color);
+    border-right-color: var(--accent-color);
 }
 
 .toc-level-1 { font-weight: 600; }
@@ -425,8 +441,8 @@ body {
 /* Terminal Mode Styles - Raw markdown with syntax highlighting */
 #terminal-view {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 11px;
+    line-height: 1.5;
     background: transparent;
     margin: 0;
     padding: 0;
@@ -469,14 +485,12 @@ body {
 
 const JS: &str = r##"
 let currentMode = 'github';
+let tocVisible = false;
 
 function setMode(mode) {
     currentMode = mode;
     const content = document.getElementById('content');
     content.className = 'content ' + mode;
-
-    document.getElementById('github-btn').classList.toggle('active', mode === 'github');
-    document.getElementById('terminal-btn').classList.toggle('active', mode === 'terminal');
 
     // Toggle views
     document.getElementById('github-view').style.display = mode === 'github' ? 'block' : 'none';
@@ -485,12 +499,43 @@ function setMode(mode) {
     try { localStorage.setItem('marrow-mode', mode); } catch(e) {}
 }
 
+function toggleToc() {
+    tocVisible = !tocVisible;
+    const toc = document.getElementById('toc');
+    toc.classList.toggle('hidden', !tocVisible);
+
+    // Resize window via IPC
+    if (window.ipc) {
+        window.ipc.postMessage(tocVisible ? 'toc_show' : 'toc_hide');
+    }
+
+    try { localStorage.setItem('marrow-toc', tocVisible ? 'visible' : 'hidden'); } catch(e) {}
+}
+
 function scrollToHeading(slug) {
     const el = document.getElementById(slug);
     if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+    // Ignore if typing in input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    switch(e.key.toLowerCase()) {
+        case 'g':
+            setMode('github');
+            break;
+        case 't':
+            setMode('terminal');
+            break;
+        case 'c':
+            toggleToc();
+            break;
+    }
+});
 
 function initCodeBlocks() {
     // GitHub view: add language labels to code blocks
@@ -694,8 +739,17 @@ document.addEventListener('DOMContentLoaded', function() {
     initCodeBlocks();
 
     try {
-        const saved = localStorage.getItem('marrow-mode');
-        if (saved) setMode(saved);
+        const savedMode = localStorage.getItem('marrow-mode');
+        if (savedMode) setMode(savedMode);
+
+        const savedToc = localStorage.getItem('marrow-toc');
+        if (savedToc === 'visible') {
+            tocVisible = true;
+            document.getElementById('toc').classList.remove('hidden');
+            if (window.ipc) {
+                window.ipc.postMessage('toc_show');
+            }
+        }
     } catch(e) {}
 });
 "##;
