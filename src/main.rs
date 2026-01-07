@@ -143,10 +143,9 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         .iter()
         .map(|(level, text)| {
             let slug = slugify(text);
-            let indent = (*level as f32 - 1.0) * 12.0;
             format!(
-                r##"<a href="#" onclick="scrollToHeading('{}'); return false;" class="toc-item toc-level-{}" style="padding-left: {}px;">{}</a>"##,
-                slug, level, indent, html_escape(text)
+                r##"<a href="#" onclick="scrollToHeading('{}'); return false;" class="toc-item toc-level-{}">{}</a>"##,
+                slug, level, html_escape(text)
             )
         })
         .collect();
@@ -169,7 +168,6 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
             <pre id="terminal-view" class="view-content" style="display:none;"><code>{}</code></pre>
         </main>
         <nav class="toc hidden" id="toc">
-            <div class="toc-header">Contents</div>
             {}
         </nav>
     </div>
@@ -277,7 +275,7 @@ body {
     background: var(--bg-secondary);
     border-left: 1px solid var(--border-color);
     overflow-y: auto;
-    padding: 12px 0;
+    padding: 16px 0;
     order: 2;
 }
 
@@ -311,21 +309,12 @@ body {
     margin-right: 4px;
 }
 
-.toc-header {
-    padding: 0 12px 8px;
-    font-weight: 600;
-    font-size: 11px;
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: 6px;
-}
-
 .toc-item {
     display: block;
-    padding: 4px 12px;
+    padding: 5px 14px;
     color: var(--text-secondary);
     text-decoration: none;
-    font-size: 10px;
+    font-size: 12px;
     border-right: 2px solid transparent;
     transition: all 0.15s ease;
 }
@@ -336,9 +325,16 @@ body {
     border-right-color: var(--accent-color);
 }
 
-.toc-level-1 { font-weight: 600; }
-.toc-level-2 { font-weight: 500; }
-.toc-level-3, .toc-level-4, .toc-level-5, .toc-level-6 { font-weight: 400; }
+.toc-level-1 {
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+}
+.toc-level-2 { font-weight: 500; padding-left: 14px !important; }
+.toc-level-3 { font-weight: 400; padding-left: 26px !important; }
+.toc-level-4, .toc-level-5, .toc-level-6 { font-weight: 400; padding-left: 38px !important; }
 
 .content {
     flex: 1;
@@ -513,7 +509,9 @@ function toggleToc() {
 }
 
 function scrollToHeading(slug) {
-    const el = document.getElementById(slug);
+    // Find element in the currently active view
+    const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
+    const el = document.querySelector(activeView + ' #' + slug);
     if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -670,9 +668,11 @@ function highlightMarkdown() {
 
         line = escapeHtml(line);
 
-        // Headings
+        // Headings - add ID for navigation
         if (line.match(/^#{1,6}\s/)) {
-            html += '<span class="md-heading">' + line + '</span>\n';
+            const headingText = line.replace(/^#+\s*/, '');
+            const slug = slugify(headingText);
+            html += '<span class="md-heading" id="' + slug + '">' + line + '</span>\n';
             continue;
         }
 
@@ -732,6 +732,16 @@ function escapeHtml(text) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+}
+
+function slugify(text) {
+    return text.toLowerCase()
+        .split('')
+        .map(c => /[a-z0-9]/.test(c) ? c : '-')
+        .join('')
+        .split('-')
+        .filter(s => s.length > 0)
+        .join('-');
 }
 
 // Initialize
