@@ -1,0 +1,18 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build artifacts
+*.dSYM/
