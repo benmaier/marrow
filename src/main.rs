@@ -15,19 +15,13 @@ const WIDTH_WITH_TOC: f64 = 820.0;     // + 225 for TOC
 const HEIGHT: f64 = 842.0;             // 595 * 1.414 ≈ 842
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file_path = std::env::args().nth(1).map(|arg| {
+    // Check for command line argument first
+    let initial_path = std::env::args().nth(1).map(|arg| {
         let path = PathBuf::from(&arg);
         path.canonicalize().unwrap_or(path)
     });
 
-    let (content, filename) = if let Some(ref path) = file_path {
-        match std::fs::read_to_string(path) {
-            Ok(c) => (c, path.file_name().and_then(|n| n.to_str()).unwrap_or("untitled").to_string()),
-            Err(e) => (format!("# Error\n\nCould not load file: {}", e), "Error".to_string()),
-        }
-    } else {
-        ("# Welcome to Marrow\n\nOpen a markdown file to get started.\n\nUse `Cmd+O` or drag and drop a `.md` file.".to_string(), "Marrow".to_string())
-    };
+    let (content, filename) = load_file(initial_path.as_ref());
 
     let toc = extract_toc(&content);
     let html_content = markdown_to_html(&content);
@@ -41,8 +35,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let window = Arc::new(window);
     let window_clone = Arc::clone(&window);
+    let window_clone2 = Arc::clone(&window);
 
-    let _webview = WebViewBuilder::new()
+    let webview = WebViewBuilder::new()
         .with_html(&full_html)
         .with_ipc_handler(move |req| {
             let msg = req.body();
@@ -73,14 +68,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
-        if let TaoEvent::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            ..
-        } = event
-        {
-            *control_flow = ControlFlow::Exit;
+        match event {
+            TaoEvent::Opened { urls } => {
+                // Handle files opened via macOS "Open With" or double-click
+                if let Some(url) = urls.first() {
+                    if let Ok(path) = url.to_file_path() {
+                        let (content, filename) = load_file(Some(&path));
+                        let toc = extract_toc(&content);
+                        let html_content = markdown_to_html(&content);
+
+                        // Update window title
+                        window_clone2.set_title(&format!("Marrow - {}", filename));
+
+                        // Update webview content via JavaScript
+                        let js = generate_reload_js(&content, &html_content, &toc);
+                        let _ = webview.evaluate_script(&js);
+                    }
+                }
+            }
+            TaoEvent::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+            }
+            _ => {}
         }
     });
+}
+
+fn load_file(path: Option<&PathBuf>) -> (String, String) {
+    if let Some(path) = path {
+        match std::fs::read_to_string(path) {
+            Ok(c) => (c, path.file_name().and_then(|n| n.to_str()).unwrap_or("untitled").to_string()),
+            Err(e) => (format!("# Error\n\nCould not load file: {}", e), "Error".to_string()),
+        }
+    } else {
+        ("# Welcome to Marrow\n\nOpen a markdown file to get started.\n\nDrag and drop a `.md` file or open one with Marrow.".to_string(), "Marrow".to_string())
+    }
+}
+
+fn generate_reload_js(content: &str, html_content: &str, toc: &[(usize, String)]) -> String {
+    let content_with_ids = add_heading_ids(html_content);
+    let raw_escaped = js_escape(content);
+    let html_escaped = js_escape(&content_with_ids);
+
+    let toc_html: String = toc
+        .iter()
+        .map(|(level, text)| {
+            let slug = slugify(text);
+            format!(
+                "<a href=\"#\" onclick=\"scrollToHeading('{}'); return false;\" class=\"toc-item toc-level-{}\">{}</a>",
+                slug, level, html_escape(text)
+            )
+        })
+        .collect();
+    let toc_escaped = js_escape(&toc_html);
+
+    format!(
+        "document.getElementById('github-view').innerHTML = \"{}\";\
+         document.getElementById('terminal-view').innerHTML = \"<code>\" + \"{}\" + \"</code>\";\
+         document.getElementById('toc').innerHTML = \"{}\";\
+         initCodeBlocks();",
+        html_escaped,
+        raw_escaped,
+        toc_escaped
+    )
+}
+
+fn js_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 fn extract_toc(markdown: &str) -> Vec<(usize, String)> {
