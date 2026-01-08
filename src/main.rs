@@ -243,7 +243,7 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
     <div class="container">
         <main class="content github" id="content">
             <div id="github-view" class="view-content">{}</div>
-            <pre id="terminal-view" class="view-content" style="display:none;"><code>{}</code></pre>
+            <div id="terminal-view" class="view-content" style="display:none;">{}</div>
         </main>
         <nav class="toc hidden" id="toc">
             {}
@@ -597,16 +597,13 @@ mark.search-highlight.current {
     background: transparent;
     margin: 0;
     padding: 0;
-    white-space: pre-wrap;
-    word-wrap: break-word;
     color: var(--text-primary);
 }
 
-#terminal-view code {
-    font-family: inherit;
-    font-size: inherit;
-    background: transparent;
-    padding: 0;
+#terminal-view .line {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    min-height: 1.5em;
 }
 
 /* Markdown syntax highlighting - muted colors */
@@ -627,11 +624,19 @@ mark.search-highlight.current {
 
 /* Code block background wrapper */
 .md-code-block-wrapper {
-    display: block;
     background: rgba(255, 255, 255, 0.04);
     border-radius: 4px;
     padding: 8px 12px;
 }
+
+.md-code-block-wrapper pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: inherit;
+    font-size: inherit;
+}
+
 "##;
 
 const JS: &str = r##"
@@ -995,14 +1000,12 @@ function formatTable(tableLines) {
 
 function highlightMarkdown() {
     const terminalView = document.getElementById('terminal-view');
-    const code = terminalView.querySelector('code');
-    if (!code) return;
-
-    let text = code.textContent;
+    // Get raw text from initial content (stored in data attribute or parsed from escaped HTML)
+    let text = terminalView.textContent;
     let html = '';
     let inCodeBlock = false;
     let codeBlockLang = '';
-    let codeBlockContent = [];
+    let codeBlockLines = [];
 
     // Pre-process: format tables
     let lines = text.split('\n');
@@ -1027,6 +1030,12 @@ function highlightMarkdown() {
 
     lines = formattedLines;
 
+    // Helper to create a line div with optional padding
+    function makeLine(content, indent) {
+        const style = indent > 0 ? ' style="padding-left:' + indent + 'ch"' : '';
+        return '<div class="line"' + style + '>' + content + '</div>';
+    }
+
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
 
@@ -1035,22 +1044,25 @@ function highlightMarkdown() {
             if (!inCodeBlock) {
                 inCodeBlock = true;
                 codeBlockLang = line.slice(3).trim();
-                html += '<span class="md-code-fence">' + escapeHtml(line) + '</span>\n<span class="md-code-block-wrapper">';
-                codeBlockContent = [];
+                html += makeLine('<span class="md-code-fence">' + escapeHtml(line) + '</span>', 0);
+                codeBlockLines = [];
             } else {
-                // End of code block - apply syntax highlighting to collected content
-                if (codeBlockContent.length > 0 && codeBlockLang && typeof hljs !== 'undefined') {
-                    try {
-                        const highlighted = hljs.highlight(codeBlockContent.join('\n'), { language: codeBlockLang, ignoreIllegals: true });
-                        html += highlighted.value;
-                    } catch (e) {
-                        // Fallback if language not supported
-                        html += escapeHtml(codeBlockContent.join('\n'));
+                // End of code block - render collected content
+                if (codeBlockLines.length > 0) {
+                    let codeContent;
+                    if (codeBlockLang && typeof hljs !== 'undefined') {
+                        try {
+                            const highlighted = hljs.highlight(codeBlockLines.join('\n'), { language: codeBlockLang, ignoreIllegals: true });
+                            codeContent = highlighted.value;
+                        } catch (e) {
+                            codeContent = escapeHtml(codeBlockLines.join('\n'));
+                        }
+                    } else {
+                        codeContent = escapeHtml(codeBlockLines.join('\n'));
                     }
-                } else if (codeBlockContent.length > 0) {
-                    html += escapeHtml(codeBlockContent.join('\n'));
+                    html += '<div class="line md-code-block-wrapper"><pre>' + codeContent + '</pre></div>';
                 }
-                html += '</span><span class="md-code-fence">' + escapeHtml(line) + '</span>\n';
+                html += makeLine('<span class="md-code-fence">' + escapeHtml(line) + '</span>', 0);
                 inCodeBlock = false;
                 codeBlockLang = '';
             }
@@ -1058,69 +1070,98 @@ function highlightMarkdown() {
         }
 
         if (inCodeBlock) {
-            codeBlockContent.push(line);
+            codeBlockLines.push(line);
             continue;
         }
 
-        line = escapeHtml(line);
+        // Check for indentation before escaping
+        const indentMatch = line.match(/^(\s+)/);
+        const indent = indentMatch ? indentMatch[1].length : 0;
+        const content = indent > 0 ? line.slice(indent) : line;
+
+        let processed = escapeHtml(content);
 
         // Headings - add ID for navigation
-        if (line.match(/^#{1,6}\s/)) {
-            const headingText = line.replace(/^#+\s*/, '');
+        if (processed.match(/^#{1,6}\s/)) {
+            const headingText = processed.replace(/^#+\s*/, '');
             const slug = slugify(headingText);
-            html += '<span class="md-heading" id="' + slug + '">' + line + '</span>\n';
+            html += makeLine('<span class="md-heading" id="' + slug + '">' + processed + '</span>', indent);
             continue;
         }
 
         // Horizontal rules
-        if (line.match(/^(-{3,}|\*{3,}|_{3,})$/)) {
-            html += '<span class="md-hr">' + line + '</span>\n';
+        if (processed.match(/^(-{3,}|\*{3,}|_{3,})$/)) {
+            html += makeLine('<span class="md-hr">' + processed + '</span>', indent);
             continue;
         }
 
         // Blockquotes
-        if (line.match(/^&gt;\s?/)) {
-            html += '<span class="md-blockquote">' + line + '</span>\n';
+        if (processed.match(/^&gt;\s?/)) {
+            html += makeLine('<span class="md-blockquote">' + processed + '</span>', indent);
             continue;
         }
 
         // Table rows
-        if (line.match(/^\|.*\|$/)) {
-            if (line.match(/^\|[\s\-|]+\|$/)) {
-                // Separator row
-                html += '<span class="md-table-sep">' + line + '</span>\n';
+        if (processed.match(/^\|.*\|$/)) {
+            if (processed.match(/^\|[\s\-|]+\|$/)) {
+                html += makeLine('<span class="md-table-sep">' + processed + '</span>', indent);
             } else {
-                // Apply inline formatting to table content
-                let tableLine = line;
+                let tableLine = processed;
                 tableLine = tableLine.replace(/(\*\*|__)(.+?)\1/g, '<span class="md-bold">$1$2$1</span>');
                 tableLine = tableLine.replace(/(\*|(?<!\w)_)(.+?)\1(?!\w)/g, '<span class="md-italic">$1$2$1</span>');
-                tableLine = tableLine.replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>');
+                tableLine = highlightInlineCode(tableLine);
                 tableLine = tableLine.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
-                html += '<span class="md-table">' + tableLine + '</span>\n';
+                html += makeLine('<span class="md-table">' + tableLine + '</span>', indent);
             }
             continue;
         }
 
         // List items
-        line = line.replace(/^(\s*)([-*+]|\d+\.)\s/, '$1<span class="md-list-marker">$2</span> ');
+        processed = processed.replace(/^([-*+]|\d+\.)\s/, '<span class="md-list-marker">$1</span> ');
 
-        // Inline formatting (order matters)
-        // Bold **text** or __text__
-        line = line.replace(/(\*\*|__)(.+?)\1/g, '<span class="md-bold">$1$2$1</span>');
+        // Inline formatting
+        processed = processed.replace(/(\*\*|__)(.+?)\1/g, '<span class="md-bold">$1$2$1</span>');
+        processed = processed.replace(/(\*|(?<!\w)_)(.+?)\1(?!\w)/g, '<span class="md-italic">$1$2$1</span>');
+        processed = highlightInlineCode(processed);
+        processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
 
-        // Italic *text* or _text_ (but not inside words for _)
-        line = line.replace(/(\*|(?<!\w)_)(.+?)\1(?!\w)/g, '<span class="md-italic">$1$2$1</span>');
-
-        // Inline code
-        line = line.replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>');
-
-        // Links [text](url) - make them clickable
-        line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
-
-        html += line + '\n';
+        html += makeLine(processed, indent);
     }
 
-    code.innerHTML = html.slice(0, -1); // Remove trailing newline
+    terminalView.innerHTML = html;
+}
+
+function highlightInlineCode(text) {
+    // Parse backticks properly: count opening backticks, find matching closing sequence
+    let result = '';
+    let i = 0;
+    while (i < text.length) {
+        if (text[i] === '\u0060') {
+            // Count consecutive backticks
+            let backtickCount = 0;
+            let start = i;
+            while (i < text.length && text[i] === '\u0060') {
+                backtickCount++;
+                i++;
+            }
+            // Look for matching closing backticks
+            const closer = '\u0060'.repeat(backtickCount);
+            const closeIdx = text.indexOf(closer, i);
+            if (closeIdx !== -1) {
+                // Found matching closer
+                const codeContent = text.slice(i, closeIdx);
+                result += '<span class="md-code">' + closer + codeContent + closer + '</span>';
+                i = closeIdx + backtickCount;
+            } else {
+                // No matching closer, output backticks as-is
+                result += text.slice(start, i);
+            }
+        } else {
+            result += text[i];
+            i++;
+        }
+    }
+    return result;
 }
 
 function escapeHtml(text) {

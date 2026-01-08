@@ -2,12 +2,13 @@
 
 APP_PATH = target/release/bundle/osx/Marrow.app
 PLIST = $(APP_PATH)/Contents/Info.plist
+SHELL := /bin/bash
 
 build:
-	cargo build --release
+	source "$$HOME/.cargo/env" && cargo build --release
 
 bundle:
-	cargo bundle --release
+	source "$$HOME/.cargo/env" && cargo bundle --release
 	@# Add document type associations for markdown files
 	@plutil -insert CFBundleDocumentTypes -json '[ \
 		{ \
