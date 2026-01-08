@@ -1,60 +1,254 @@
 # Marrow
 
-A fast, native macOS markdown viewer with GitHub and terminal rendering modes.
+A fast, native macOS markdown viewer with dual rendering modes, smart copy, and a distraction-free reading experience.
+
+## Why Marrow?
+
+There are plenty of markdown *editors*. But what if you just want to *read* markdown?
+
+Marrow is a viewer, not an editor. No syntax panes, no live preview splits, no project management. Just:
+
+- **Render markdown** with GitHub-style dark theme
+- **Copy as markdown** when you select and copy
+- **Navigate with a TOC** generated from headings
+
+That's it. Lightweight, fast, native.
 
 ## Features
 
-- **Two rendering modes**
-  - **GitHub mode**: Rendered HTML with dark theme styling
-  - **Terminal mode**: Raw markdown with syntax highlighting (copy-pasteable)
-- **Table of Contents**: Auto-generated navigation from headings
-- **Search**: Find text with match highlighting and navigation
-- **Syntax highlighting**: Code blocks highlighted in both views
-- **Native performance**: Uses WebKit via wry, not Electron/Chrome
+### Dual Rendering Modes
+
+**GitHub Mode** (default)
+- Polished, dark-themed HTML rendering matching GitHub's markdown style
+- Full GFM (GitHub Flavored Markdown) support: tables, task lists, strikethrough, footnotes
+- Syntax-highlighted code blocks with language labels
+- Clickable links that open in your default browser
+
+**Terminal Mode**
+- Raw markdown with syntax highlighting
+- Perfect for copy-pasting into terminals, editors, or chat apps
+- Monospace font with clear visual hierarchy
+- Tables auto-formatted for alignment
+
+Press `Tab` to toggle between modes. Your scroll position syncs between views.
+
+### Smart Copy
+
+Marrow's copy behavior is context-aware:
+
+| Shortcut | GitHub Mode | Terminal Mode |
+|----------|-------------|---------------|
+| `Cmd+C` | Copies **markdown source** | Copies plain text |
+| `Shift+Cmd+C` | Copies **formatted HTML** | Copies plain text |
+
+**Precise Selection**: When you select text in GitHub mode, Marrow extracts the exact markdown source for your selection—including surrounding syntax like `**bold**` or `` `code` ``. Select a table cell, get the markdown table row. Select a code block, get the fenced code block with language tag.
+
+### Table of Contents
+
+Auto-generated navigation panel from document headings:
+
+- Press `C` to toggle the TOC sidebar
+- Click any heading to jump to it
+- Current section highlights as you scroll
+- Hierarchical indentation (H1 → H6)
+
+### Search
+
+Press `Cmd+F` to search within the document:
+
+- Real-time highlighting as you type
+- `Enter` / `Shift+Enter` to navigate between matches
+- Match counter shows current position
+- `Esc` to close
+
+### Additional Features
+
+- **Font Size Control**: `Cmd+Plus` / `Cmd+Minus` / `Cmd+0` to zoom
+- **Multi-Window**: Open multiple documents, each in its own window
+- **File Associations**: Set Marrow as your default `.md` viewer
+- **Persistent Preferences**: View mode, TOC state, and font size remembered across sessions
+- **Smart Window Titles**: Shows first heading + filename
 
 ## Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
-| `G` | Switch to GitHub view |
-| `T` | Switch to Terminal view |
+| `Tab` | Toggle GitHub/Terminal view |
 | `C` | Toggle Table of Contents |
-| `⌘F` | Search |
+| `Cmd+F` | Open search |
 | `Enter` | Next search match |
 | `Shift+Enter` | Previous search match |
 | `Esc` | Close search |
+| `Cmd+C` | Copy (markdown source in GitHub mode) |
+| `Shift+Cmd+C` | Copy formatted HTML |
+| `Cmd+A` | Select all content |
+| `Cmd+Plus` | Increase font size |
+| `Cmd+Minus` | Decrease font size |
+| `Cmd+0` | Reset font size |
+| `Cmd+W` | Close window |
+| `Cmd+Q` | Quit app |
 
-## Building
+## Installation
+
+### Pre-built App
+
+Download `Marrow.app` from [Releases](../../releases) and drag to `/Applications`.
+
+### Build from Source
+
+Requires Rust toolchain. Install via [rustup](https://rustup.rs/).
 
 ```bash
-cargo build --release
+# Clone the repo
+git clone https://github.com/benmaier/marrow.git
+cd marrow
+
+# Build and install
+make install
 ```
 
-The binary will be at `target/release/marrow`.
+This creates `Marrow.app` in `/Applications`.
 
-### macOS App Bundle
+### Set as Default Markdown Viewer
 
-To create a proper macOS `.app` bundle:
-
-```bash
-cargo install cargo-bundle
-cargo bundle --release
-```
-
-The app will be at `target/release/bundle/osx/Marrow.app`.
+1. Right-click any `.md` file in Finder
+2. Select "Get Info"
+3. Under "Open with", choose Marrow
+4. Click "Change All..."
 
 ## Usage
 
+### From Command Line
+
 ```bash
+# Open a file
 marrow path/to/file.md
+
+# Or use the app bundle
+open -a Marrow path/to/file.md
 ```
+
+### From Finder
+
+Double-click any `.md` file (if Marrow is set as default), or:
+
+1. Right-click the file
+2. Open With → Marrow
+
+### Drag and Drop
+
+Drag markdown files onto the Marrow icon in Dock or Applications.
+
+## Supported Markdown
+
+Marrow uses [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) with full GFM extensions:
+
+- **Headings** (ATX style: `# H1` through `###### H6`)
+- **Emphasis** (`*italic*`, `**bold**`, `***bold italic***`)
+- **Strikethrough** (`~~deleted~~`)
+- **Code** (inline `` `code` `` and fenced blocks with syntax highlighting)
+- **Links** (`[text](url)` and `[text](url "title")`)
+- **Images** (`![alt](url)`)
+- **Blockquotes** (`> quoted text`)
+- **Lists** (ordered, unordered, nested)
+- **Task Lists** (`- [x] done`, `- [ ] todo`)
+- **Tables** (GFM pipe tables with alignment)
+- **Footnotes** (`[^1]` references)
+- **Horizontal Rules** (`---`, `***`, `___`)
+- **Raw HTML** (passed through in GitHub mode)
+
+### Syntax Highlighting
+
+Code blocks support 180+ languages via [highlight.js](https://highlightjs.org/). Specify the language after the opening fence:
+
+````markdown
+```python
+def hello():
+    print("Hello, World!")
+```
+````
+
+## Building
+
+### Requirements
+
+- Rust 1.70+ (install via [rustup](https://rustup.rs/))
+- macOS 10.15+ (Catalina or later)
+- Xcode Command Line Tools
+
+### Make Targets
+
+```bash
+make build      # Build release binary
+make bundle     # Create Marrow.app bundle
+make install    # Bundle and copy to /Applications
+make clean      # Remove build artifacts
+```
+
+### Manual Build
+
+```bash
+# Install cargo-bundle if needed
+cargo install cargo-bundle
+
+# Build the app bundle
+cargo bundle --release
+
+# Binary location
+ls target/release/marrow
+
+# App bundle location
+ls target/release/bundle/osx/Marrow.app
+```
+
+## Architecture
+
+```
+src/
+└── main.rs          # Single-file implementation (~1700 lines)
+    ├── Window management (tao)
+    ├── WebView rendering (wry)
+    ├── Markdown parsing (pulldown-cmark)
+    ├── HTML generation with line tracking
+    ├── Embedded CSS (GitHub dark theme)
+    └── Embedded JavaScript
+        ├── View switching
+        ├── TOC navigation
+        ├── Search functionality
+        ├── Smart copy logic
+        └── Markdown syntax highlighting
+```
+
+### How Smart Copy Works
+
+Each HTML element includes a `data-lines` attribute mapping to original markdown line numbers. When you copy:
+
+1. JavaScript finds which elements intersect your selection
+2. Extracts the corresponding markdown lines
+3. Matches your selected text within those lines
+4. Expands to include surrounding markdown syntax
+5. Sends to clipboard via native IPC (arboard crate)
+
+This approach preserves formatting markers (`**`, `` ` ``, `#`, etc.) that browsers would normally strip.
 
 ## Dependencies
 
-- [wry](https://github.com/nicholaswaite/nicholaswaite) - Cross-platform webview (WebKit on macOS)
-- [tao](https://github.com/nicholaswaite/nicholaswaite) - Window management
-- [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) - Markdown parsing with GFM support
+| Crate | Purpose |
+|-------|---------|
+| [wry](https://github.com/tauri-apps/wry) | Cross-platform WebView (WebKit on macOS) |
+| [tao](https://github.com/tauri-apps/tao) | Window management |
+| [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | Markdown parsing with GFM |
+| [arboard](https://github.com/1Password/arboard) | Cross-platform clipboard |
+| [directories](https://github.com/dirs-dev/directories-rs) | Platform config paths |
+| [serde](https://serde.rs/) | Serialization |
+
+External (loaded via CDN):
+- [highlight.js](https://highlightjs.org/) - Syntax highlighting
 
 ## License
 
 MIT
+
+## Contributing
+
+Issues and PRs welcome at [github.com/benmaier/marrow](https://github.com/benmaier/marrow).

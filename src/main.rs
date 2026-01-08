@@ -1,9 +1,10 @@
 use pulldown_cmark::{Options, Parser, HeadingLevel, Event, Tag, TagEnd, CodeBlockKind};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tao::{
-    dpi::LogicalSize,
+    dpi::{LogicalSize, PhysicalPosition},
     event::{Event as TaoEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
     window::{Window, WindowBuilder, WindowId},
@@ -16,12 +17,54 @@ enum UserEvent {
     QuitApp,
 }
 
-const INITIAL_WIDTH: f64 = 800.0;
-const HEIGHT: f64 = 900.0;
+#[derive(Serialize, Deserialize, Clone)]
+struct Settings {
+    window_width: f64,
+    window_height: f64,
+    toc_visible: bool,
+    view_mode: String,
+    font_size_level: i32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            window_width: 800.0,
+            window_height: 900.0,
+            toc_visible: false,
+            view_mode: "github".to_string(),
+            font_size_level: 0,
+        }
+    }
+}
+
+fn get_settings_path() -> Option<PathBuf> {
+    directories::ProjectDirs::from("com", "marrow", "app")
+        .map(|dirs| dirs.config_dir().join("settings.json"))
+}
+
+fn load_settings() -> Settings {
+    get_settings_path()
+        .and_then(|path| std::fs::read_to_string(&path).ok())
+        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings(settings: &Settings) {
+    if let Some(path) = get_settings_path() {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(json) = serde_json::to_string_pretty(settings) {
+            let _ = std::fs::write(&path, json);
+        }
+    }
+}
 
 struct AppWindow {
-    _window: Arc<Window>,
+    window: Arc<Window>,
     _webview: WebView,
+    file_path: Option<PathBuf>,
 }
 
 fn truncate_end(s: &str, max: usize) -> String {
@@ -46,15 +89,53 @@ fn truncate_middle(s: &str, max: usize) -> String {
     }
 }
 
+fn calculate_cascade_position(existing: &HashMap<WindowId, AppWindow>) -> Option<PhysicalPosition<i32>> {
+    if existing.is_empty() {
+        return None;
+    }
+
+    // Find the window furthest down-right and offset from it
+    let mut max_offset: i32 = 0;
+    let mut base_pos: Option<(i32, i32)> = None;
+
+    for app_window in existing.values() {
+        if let Ok(pos) = app_window.window.outer_position() {
+            let offset = pos.x + pos.y;
+            if offset >= max_offset {
+                max_offset = offset;
+                base_pos = Some((pos.x, pos.y));
+            }
+        }
+    }
+
+    // Offset right and down (50 physical pixels each)
+    base_pos.map(|(x, y)| PhysicalPosition::new(x + 50, y + 50))
+}
+
+fn find_window_for_path(windows: &HashMap<WindowId, AppWindow>, path: &PathBuf) -> Option<WindowId> {
+    for (id, app_window) in windows {
+        if let Some(ref existing_path) = app_window.file_path {
+            if existing_path == path {
+                return Some(*id);
+            }
+        }
+    }
+    None
+}
+
 fn create_window(
     event_loop: &EventLoopWindowTarget<UserEvent>,
     proxy: EventLoopProxy<UserEvent>,
     path: Option<&PathBuf>,
+    settings: &Arc<Mutex<Settings>>,
+    existing_windows: &HashMap<WindowId, AppWindow>,
 ) -> Result<(WindowId, AppWindow), Box<dyn std::error::Error>> {
+    let current_settings = settings.lock().unwrap().clone();
+
     let (content, filename) = load_file(path);
     let toc = extract_toc(&content);
     let html_content = markdown_to_html(&content);
-    let full_html = build_full_html(&content, &html_content, &toc, &filename);
+    let full_html = build_full_html(&content, &html_content, &toc, &filename, &current_settings);
 
     // Build window title: "First Heading · filename · Marrow 🦴"
     let first_heading = toc.first().map(|(_, text)| truncate_end(text, 20));
@@ -64,15 +145,25 @@ fn create_window(
         None => format!("{} · Marrow 🦴", short_filename),
     };
 
-    let window = WindowBuilder::new()
-        .with_title(title)
-        .with_inner_size(LogicalSize::new(INITIAL_WIDTH, HEIGHT))
-        .build(event_loop)?;
+    // Calculate window size (use settings, add TOC width if visible)
+    let width = current_settings.window_width + if current_settings.toc_visible { 200.0 } else { 0.0 };
+    let height = current_settings.window_height;
 
+    let builder = WindowBuilder::new()
+        .with_title(title)
+        .with_inner_size(LogicalSize::new(width, height));
+
+    let window = builder.build(event_loop)?;
+
+    // Apply cascade position after window is created
+    if let Some(pos) = calculate_cascade_position(existing_windows) {
+        window.set_outer_position(pos);
+    }
     let window = Arc::new(window);
     let window_clone = Arc::clone(&window);
     let window_id = window.id();
     let proxy_clone = proxy.clone();
+    let settings_clone = Arc::clone(settings);
 
     let webview = WebViewBuilder::new()
         .with_html(&full_html)
@@ -91,6 +182,14 @@ fn create_window(
                 let text = &msg[10..];
                 if let Ok(mut clipboard) = arboard::Clipboard::new() {
                     let _ = clipboard.set_text(text);
+                }
+            } else if msg.starts_with("save_settings:") {
+                // Format: "save_settings:{json}"
+                let json = &msg[14..];
+                if let Ok(new_settings) = serde_json::from_str::<Settings>(json) {
+                    let mut settings = settings_clone.lock().unwrap();
+                    *settings = new_settings;
+                    save_settings(&settings);
                 }
             } else {
                 match msg.as_str() {
@@ -116,7 +215,8 @@ fn create_window(
         })
         .build(&window)?;
 
-    Ok((window_id, AppWindow { _window: window, _webview: webview }))
+    let file_path = path.cloned();
+    Ok((window_id, AppWindow { window, _webview: webview, file_path }))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -125,13 +225,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         path.canonicalize().unwrap_or(path)
     });
 
+    // Load persistent settings
+    let settings = Arc::new(Mutex::new(load_settings()));
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let mut windows: HashMap<WindowId, AppWindow> = HashMap::new();
 
     // Only create initial window if a file was passed via command line
     if let Some(ref path) = initial_path {
-        let (id, app_window) = create_window(&event_loop, proxy.clone(), Some(path))?;
+        let (id, app_window) = create_window(&event_loop, proxy.clone(), Some(path), &settings, &windows)?;
         windows.insert(id, app_window);
     }
 
@@ -140,11 +243,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match event {
             TaoEvent::Opened { urls } => {
-                // Create a new window for each opened file
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
-                        if let Ok((id, app_window)) = create_window(event_loop, proxy.clone(), Some(&path)) {
-                            windows.insert(id, app_window);
+                        // Check if file is already open
+                        if let Some(existing_id) = find_window_for_path(&windows, &path) {
+                            // Focus the existing window
+                            if let Some(app_window) = windows.get(&existing_id) {
+                                app_window.window.set_focus();
+                            }
+                        } else {
+                            // Create new window
+                            if let Ok((id, app_window)) = create_window(event_loop, proxy.clone(), Some(&path), &settings, &windows) {
+                                windows.insert(id, app_window);
+                            }
                         }
                     }
                 }
@@ -602,7 +713,9 @@ fn slugify(text: &str) -> String {
         .join("-")
 }
 
-fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str) -> String {
+fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str, settings: &Settings) -> String {
+    let settings_json = serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string());
+
     let toc_html: String = toc
         .iter()
         .map(|(level, text)| {
@@ -665,6 +778,7 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>const markdownLines = [{}];</script>
+    <script>const initialSettings = {};</script>
     <script>{}</script>
 </body>
 </html>"##,
@@ -673,6 +787,7 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         raw_markdown_escaped,
         toc_html,
         markdown_lines_json,
+        settings_json,
         JS
     )
 }
@@ -1003,23 +1118,40 @@ mark.search-highlight.current {
 "##;
 
 const JS: &str = r##"
-let currentMode = 'github';
-let tocVisible = false;
+// Initialize from settings injected by Rust
+let currentMode = initialSettings.view_mode || 'github';
+let tocVisible = initialSettings.toc_visible || false;
+let fontSizeLevel = initialSettings.font_size_level || 0;
 const TOC_WIDTH = 200;
-let fontSizeLevel = 0;  // -3 to +5 range
 const BASE_FONT_SIZE = 15;
 const TERMINAL_BASE_SIZE = 11;
+
+function saveSettings() {
+    if (window.ipc) {
+        // Get current window size (subtract TOC width if visible)
+        const width = window.innerWidth - (tocVisible ? TOC_WIDTH : 0);
+        const height = window.innerHeight;
+        const settings = {
+            window_width: width,
+            window_height: height,
+            toc_visible: tocVisible,
+            view_mode: currentMode,
+            font_size_level: fontSizeLevel
+        };
+        window.ipc.postMessage('save_settings:' + JSON.stringify(settings));
+    }
+}
 
 function adjustFontSize(delta) {
     fontSizeLevel = Math.max(-3, Math.min(5, fontSizeLevel + delta));
     applyFontSize();
-    try { localStorage.setItem('marrow-fontsize', fontSizeLevel); } catch(e) {}
+    saveSettings();
 }
 
 function resetFontSize() {
     fontSizeLevel = 0;
     applyFontSize();
-    try { localStorage.setItem('marrow-fontsize', fontSizeLevel); } catch(e) {}
+    saveSettings();
 }
 
 function applyFontSize() {
@@ -1065,7 +1197,7 @@ function setMode(mode, scrollToId) {
         }
     }
 
-    try { localStorage.setItem('marrow-mode', mode); } catch(e) {}
+    saveSettings();
 }
 
 function toggleToc() {
@@ -1087,7 +1219,7 @@ function toggleToc() {
         window.ipc.postMessage('resize:' + newWidth + ':' + currentHeight);
     }
 
-    try { localStorage.setItem('marrow-toc', tocVisible ? 'visible' : 'hidden'); } catch(e) {}
+    saveSettings();
 }
 
 function scrollToHeading(slug) {
@@ -1711,25 +1843,20 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add scroll listener for TOC highlighting
     document.getElementById('content').addEventListener('scroll', updateTocHighlight);
 
-    try {
-        const savedMode = localStorage.getItem('marrow-mode');
-        if (savedMode) setMode(savedMode);
+    // Apply settings from initialSettings (already set at top of script)
+    // Set view mode
+    const content = document.getElementById('content');
+    content.className = 'content ' + currentMode;
+    document.getElementById('github-view').style.display = currentMode === 'github' ? 'block' : 'none';
+    document.getElementById('terminal-view').style.display = currentMode === 'terminal' ? 'block' : 'none';
 
-        const savedToc = localStorage.getItem('marrow-toc');
-        if (savedToc === 'visible') {
-            tocVisible = true;
-            document.getElementById('toc').classList.remove('hidden');
-            if (window.ipc) {
-                window.ipc.postMessage('toc_show');
-            }
-        }
+    // Show TOC if enabled
+    if (tocVisible) {
+        document.getElementById('toc').classList.remove('hidden');
+    }
 
-        const savedFontSize = localStorage.getItem('marrow-fontsize');
-        if (savedFontSize) {
-            fontSizeLevel = parseInt(savedFontSize, 10);
-            applyFontSize();
-        }
-    } catch(e) {}
+    // Apply font size
+    applyFontSize();
 
     // Initial highlight
     updateTocHighlight();
