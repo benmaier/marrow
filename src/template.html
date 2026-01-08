@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <style>{css}</style>
+</head>
+<body>
+    <div class="container">
+        <main class="content github" id="content">
+            <div id="github-view" class="view-content">{github_view}</div>
+            <div id="terminal-view" class="view-content" style="display:none;">{terminal_view}</div>
+        </main>
+        <nav class="toc hidden" id="toc">
+            {toc}
+        </nav>
+    </div>
+    <div class="search-bar hidden" id="search-bar">
+        <input type="text" id="search-input" placeholder="Search..." />
+        <span id="search-count"></span>
+        <button onclick="searchPrev()">↑</button>
+        <button onclick="searchNext()">↓</button>
+        <button onclick="closeSearch()">✕</button>
+    </div>
+    <div class="hotkey-bar">
+        <span><kbd>Tab</kbd> Toggle View</span>
+        <span><kbd>C</kbd> Contents</span>
+        <span><kbd>⌘F</kbd> Search</span>
+        <span><kbd>⌘C</kbd> Copy MD</span>
+        <span><kbd>⇧⌘C</kbd> Copy Formatted</span>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>const markdownLines = [{markdown_lines}];</script>
+    <script>const initialSettings = {settings};</script>
+    <script>{js}</script>
+</body>
+</html>
