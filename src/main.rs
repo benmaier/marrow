@@ -1,41 +1,42 @@
 use pulldown_cmark::{html, Options, Parser, HeadingLevel, Event, Tag, TagEnd};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tao::{
     dpi::LogicalSize,
     event::{Event as TaoEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
+    window::{Window, WindowBuilder, WindowId},
 };
-use wry::WebViewBuilder;
+use wry::{WebView, WebViewBuilder};
 
 // A4 aspect ratio is 1:1.414 (width:height)
 const WIDTH_WITHOUT_TOC: f64 = 595.0;  // A4-ish width
 const WIDTH_WITH_TOC: f64 = 820.0;     // + 225 for TOC
 const HEIGHT: f64 = 842.0;             // 595 * 1.414 ≈ 842
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Check for command line argument first
-    let initial_path = std::env::args().nth(1).map(|arg| {
-        let path = PathBuf::from(&arg);
-        path.canonicalize().unwrap_or(path)
-    });
+struct AppWindow {
+    _window: Arc<Window>,
+    _webview: WebView,
+}
 
-    let (content, filename) = load_file(initial_path.as_ref());
-
+fn create_window(
+    event_loop: &EventLoopWindowTarget<()>,
+    path: Option<&PathBuf>,
+) -> Result<(WindowId, AppWindow), Box<dyn std::error::Error>> {
+    let (content, filename) = load_file(path);
     let toc = extract_toc(&content);
     let html_content = markdown_to_html(&content);
     let full_html = build_full_html(&content, &html_content, &toc, &filename);
 
-    let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title(format!("Marrow - {}", filename))
         .with_inner_size(LogicalSize::new(WIDTH_WITHOUT_TOC, HEIGHT))
-        .build(&event_loop)?;
+        .build(event_loop)?;
 
     let window = Arc::new(window);
     let window_clone = Arc::clone(&window);
-    let window_clone2 = Arc::clone(&window);
+    let window_id = window.id();
 
     let webview = WebViewBuilder::new()
         .with_html(&full_html)
@@ -52,11 +53,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         })
         .with_navigation_handler(|url| {
-            // Allow internal navigation (about:blank, data:, etc.)
             if url.starts_with("about:") || url.starts_with("data:") {
                 return true;
             }
-            // Open external URLs in system browser
             if url.starts_with("http://") || url.starts_with("https://") {
                 let _ = std::process::Command::new("open").arg(&url).spawn();
                 return false;
@@ -65,32 +64,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .build(&window)?;
 
-    event_loop.run(move |event, _, control_flow| {
+    Ok((window_id, AppWindow { _window: window, _webview: webview }))
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let initial_path = std::env::args().nth(1).map(|arg| {
+        let path = PathBuf::from(&arg);
+        path.canonicalize().unwrap_or(path)
+    });
+
+    let event_loop = EventLoop::new();
+    let mut windows: HashMap<WindowId, AppWindow> = HashMap::new();
+
+    // Only create initial window if a file was passed via command line
+    if let Some(ref path) = initial_path {
+        let (id, app_window) = create_window(&event_loop, Some(path))?;
+        windows.insert(id, app_window);
+    }
+
+    event_loop.run(move |event, event_loop, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             TaoEvent::Opened { urls } => {
-                // Handle files opened via macOS "Open With" or double-click
-                if let Some(url) = urls.first() {
+                // Create a new window for each opened file
+                for url in urls {
                     if let Ok(path) = url.to_file_path() {
-                        let (content, filename) = load_file(Some(&path));
-                        let toc = extract_toc(&content);
-                        let html_content = markdown_to_html(&content);
-
-                        // Update window title
-                        window_clone2.set_title(&format!("Marrow - {}", filename));
-
-                        // Update webview content via JavaScript
-                        let js = generate_reload_js(&content, &html_content, &toc);
-                        let _ = webview.evaluate_script(&js);
+                        if let Ok((id, app_window)) = create_window(event_loop, Some(&path)) {
+                            windows.insert(id, app_window);
+                        }
                     }
                 }
             }
             TaoEvent::WindowEvent {
                 event: WindowEvent::CloseRequested,
+                window_id,
                 ..
             } => {
-                *control_flow = ControlFlow::Exit;
+                windows.remove(&window_id);
+                if windows.is_empty() {
+                    *control_flow = ControlFlow::Exit;
+                }
             }
             _ => {}
         }
@@ -106,42 +120,6 @@ fn load_file(path: Option<&PathBuf>) -> (String, String) {
     } else {
         ("# Welcome to Marrow\n\nOpen a markdown file to get started.\n\nDrag and drop a `.md` file or open one with Marrow.".to_string(), "Marrow".to_string())
     }
-}
-
-fn generate_reload_js(content: &str, html_content: &str, toc: &[(usize, String)]) -> String {
-    let content_with_ids = add_heading_ids(html_content);
-    let raw_escaped = js_escape(content);
-    let html_escaped = js_escape(&content_with_ids);
-
-    let toc_html: String = toc
-        .iter()
-        .map(|(level, text)| {
-            let slug = slugify(text);
-            format!(
-                "<a href=\"#\" onclick=\"scrollToHeading('{}'); return false;\" class=\"toc-item toc-level-{}\">{}</a>",
-                slug, level, html_escape(text)
-            )
-        })
-        .collect();
-    let toc_escaped = js_escape(&toc_html);
-
-    format!(
-        "document.getElementById('github-view').innerHTML = \"{}\";\
-         document.getElementById('terminal-view').innerHTML = \"<code>\" + \"{}\" + \"</code>\";\
-         document.getElementById('toc').innerHTML = \"{}\";\
-         initCodeBlocks();",
-        html_escaped,
-        raw_escaped,
-        toc_escaped
-    )
-}
-
-fn js_escape(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
 }
 
 fn extract_toc(markdown: &str) -> Vec<(usize, String)> {
@@ -472,6 +450,12 @@ mark.search-highlight.current {
     border-right-color: var(--accent-color);
 }
 
+.toc-item.active {
+    color: var(--text-primary);
+    background: rgba(88, 166, 255, 0.1);
+    border-right-color: var(--accent-color);
+}
+
 .toc-level-1 {
     font-weight: 600;
     color: var(--text-primary);
@@ -484,10 +468,10 @@ mark.search-highlight.current {
 .toc-level-4, .toc-level-5, .toc-level-6 { font-weight: 400; padding-left: 38px !important; }
 
 .content {
-    flex: 1;
+    width: 595px;
+    min-width: 595px;
     overflow-y: auto;
     padding: 32px 48px;
-    max-width: 900px;
 }
 
 /* GitHub Mode Styles */
@@ -679,8 +663,9 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // Ignore other shortcuts if typing in input
+    // Ignore other shortcuts if typing in input or if modifier keys are held
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch(e.key.toLowerCase()) {
         case 'g':
@@ -1022,9 +1007,40 @@ function slugify(text) {
         .join('-');
 }
 
+// TOC scroll tracking
+function updateTocHighlight() {
+    const content = document.getElementById('content');
+    const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
+    const headings = document.querySelectorAll(activeView + ' h1, ' + activeView + ' h2, ' + activeView + ' h3, ' + activeView + ' h4, ' + activeView + ' h5, ' + activeView + ' h6, ' + activeView + ' [id].md-heading');
+
+    let currentHeading = null;
+    const scrollTop = content.scrollTop;
+
+    for (const heading of headings) {
+        if (heading.offsetTop <= scrollTop + 100) {
+            currentHeading = heading;
+        } else {
+            break;
+        }
+    }
+
+    // Update TOC highlighting
+    document.querySelectorAll('.toc-item').forEach(item => item.classList.remove('active'));
+
+    if (currentHeading && currentHeading.id) {
+        const tocItem = document.querySelector('.toc-item[onclick*="' + currentHeading.id + '"]');
+        if (tocItem) {
+            tocItem.classList.add('active');
+        }
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     initCodeBlocks();
+
+    // Add scroll listener for TOC highlighting
+    document.getElementById('content').addEventListener('scroll', updateTocHighlight);
 
     try {
         const savedMode = localStorage.getItem('marrow-mode');
@@ -1039,5 +1055,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     } catch(e) {}
+
+    // Initial highlight
+    updateTocHighlight();
 });
 "##;
