@@ -5,14 +5,20 @@ use std::sync::Arc;
 use tao::{
     dpi::LogicalSize,
     event::{Event as TaoEvent, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
     window::{Window, WindowBuilder, WindowId},
 };
 use wry::{WebView, WebViewBuilder};
 
+#[derive(Debug)]
+enum UserEvent {
+    CloseWindow(WindowId),
+    QuitApp,
+}
+
 // A4 aspect ratio is 1:1.414 (width:height)
-const WIDTH_WITHOUT_TOC: f64 = 595.0;  // A4-ish width
-const WIDTH_WITH_TOC: f64 = 820.0;     // + 225 for TOC
+const INITIAL_WIDTH: f64 = 595.0;      // A4-ish width
+const TOC_WIDTH: f64 = 200.0;          // TOC pane width
 const HEIGHT: f64 = 842.0;             // 595 * 1.414 ≈ 842
 
 struct AppWindow {
@@ -21,7 +27,8 @@ struct AppWindow {
 }
 
 fn create_window(
-    event_loop: &EventLoopWindowTarget<()>,
+    event_loop: &EventLoopWindowTarget<UserEvent>,
+    proxy: EventLoopProxy<UserEvent>,
     path: Option<&PathBuf>,
 ) -> Result<(WindowId, AppWindow), Box<dyn std::error::Error>> {
     let (content, filename) = load_file(path);
@@ -31,12 +38,13 @@ fn create_window(
 
     let window = WindowBuilder::new()
         .with_title(format!("Marrow - {}", filename))
-        .with_inner_size(LogicalSize::new(WIDTH_WITHOUT_TOC, HEIGHT))
+        .with_inner_size(LogicalSize::new(INITIAL_WIDTH, HEIGHT))
         .build(event_loop)?;
 
     let window = Arc::new(window);
     let window_clone = Arc::clone(&window);
     let window_id = window.id();
+    let proxy_clone = proxy.clone();
 
     let webview = WebViewBuilder::new()
         .with_html(&full_html)
@@ -44,10 +52,24 @@ fn create_window(
             let msg = req.body();
             match msg.as_str() {
                 "toc_show" => {
-                    window_clone.set_inner_size(LogicalSize::new(WIDTH_WITH_TOC, HEIGHT));
+                    let size = window_clone.inner_size();
+                    let scale = window_clone.scale_factor();
+                    let width = size.width as f64 / scale;
+                    let height = size.height as f64 / scale;
+                    window_clone.set_inner_size(LogicalSize::new(width + TOC_WIDTH, height));
                 }
                 "toc_hide" => {
-                    window_clone.set_inner_size(LogicalSize::new(WIDTH_WITHOUT_TOC, HEIGHT));
+                    let size = window_clone.inner_size();
+                    let scale = window_clone.scale_factor();
+                    let width = size.width as f64 / scale;
+                    let height = size.height as f64 / scale;
+                    window_clone.set_inner_size(LogicalSize::new(width - TOC_WIDTH, height));
+                }
+                "close_window" => {
+                    let _ = proxy_clone.send_event(UserEvent::CloseWindow(window_id));
+                }
+                "quit_app" => {
+                    let _ = proxy_clone.send_event(UserEvent::QuitApp);
                 }
                 _ => {}
             }
@@ -73,12 +95,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         path.canonicalize().unwrap_or(path)
     });
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    let proxy = event_loop.create_proxy();
     let mut windows: HashMap<WindowId, AppWindow> = HashMap::new();
 
     // Only create initial window if a file was passed via command line
     if let Some(ref path) = initial_path {
-        let (id, app_window) = create_window(&event_loop, Some(path))?;
+        let (id, app_window) = create_window(&event_loop, proxy.clone(), Some(path))?;
         windows.insert(id, app_window);
     }
 
@@ -90,11 +113,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Create a new window for each opened file
                 for url in urls {
                     if let Ok(path) = url.to_file_path() {
-                        if let Ok((id, app_window)) = create_window(event_loop, Some(&path)) {
+                        if let Ok((id, app_window)) = create_window(event_loop, proxy.clone(), Some(&path)) {
                             windows.insert(id, app_window);
                         }
                     }
                 }
+            }
+            TaoEvent::UserEvent(UserEvent::CloseWindow(window_id)) => {
+                windows.remove(&window_id);
+                if windows.is_empty() {
+                    *control_flow = ControlFlow::Exit;
+                }
+            }
+            TaoEvent::UserEvent(UserEvent::QuitApp) => {
+                *control_flow = ControlFlow::Exit;
             }
             TaoEvent::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -468,8 +500,7 @@ mark.search-highlight.current {
 .toc-level-4, .toc-level-5, .toc-level-6 { font-weight: 400; padding-left: 38px !important; }
 
 .content {
-    width: 595px;
-    min-width: 595px;
+    flex: 1;
     overflow-y: auto;
     padding: 32px 48px;
 }
@@ -654,6 +685,20 @@ document.addEventListener('keydown', function(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
         e.preventDefault();
         openSearch();
+        return;
+    }
+
+    // Cmd+W to close window
+    if (e.metaKey && e.key === 'w') {
+        e.preventDefault();
+        if (window.ipc) window.ipc.postMessage('close_window');
+        return;
+    }
+
+    // Cmd+Q to quit app
+    if (e.metaKey && e.key === 'q') {
+        e.preventDefault();
+        if (window.ipc) window.ipc.postMessage('quit_app');
         return;
     }
 
