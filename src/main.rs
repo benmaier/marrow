@@ -1109,26 +1109,46 @@ function extractMarkdownForSelection() {
         let minLine = Infinity;
         let maxLine = 0;
 
+        // Walk up from selection endpoints to find data-lines elements
         let node = range.startContainer;
         while (node && node !== document.body) {
-            if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
-                const lines = node.getAttribute('data-lines');
-                const [start, end] = lines.split('-').map(Number);
-                if (start && start < minLine) minLine = start;
-                if (end && end > maxLine) maxLine = end;
+            if (node.nodeType === 1 && node.getAttribute) {
+                const dl = node.getAttribute('data-lines');
+                if (dl) {
+                    const [start, end] = dl.split('-').map(Number);
+                    if (start && start < minLine) minLine = start;
+                    if (end && end > maxLine) maxLine = end;
+                }
             }
             node = node.parentNode;
         }
 
         node = range.endContainer;
         while (node && node !== document.body) {
-            if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
-                const lines = node.getAttribute('data-lines');
-                const [start, end] = lines.split('-').map(Number);
-                if (start && start < minLine) minLine = start;
-                if (end && end > maxLine) maxLine = end;
+            if (node.nodeType === 1 && node.getAttribute) {
+                const dl = node.getAttribute('data-lines');
+                if (dl) {
+                    const [start, end] = dl.split('-').map(Number);
+                    if (start && start < minLine) minLine = start;
+                    if (end && end > maxLine) maxLine = end;
+                }
             }
             node = node.parentNode;
+        }
+
+        // Also check elements within the selection range (for block selections)
+        const container = range.commonAncestorContainer;
+        if (container.nodeType === 1 || container.parentElement) {
+            const root = container.nodeType === 1 ? container : container.parentElement;
+            const elementsWithDataLines = root.querySelectorAll('[data-lines]');
+            elementsWithDataLines.forEach(el => {
+                if (selection.containsNode(el, true)) {
+                    const dl = el.getAttribute('data-lines');
+                    const [start, end] = dl.split('-').map(Number);
+                    if (start && start < minLine) minLine = start;
+                    if (end && end > maxLine) maxLine = end;
+                }
+            });
         }
 
         if (minLine !== Infinity && maxLine > 0 && typeof markdownLines !== 'undefined' && markdownLines.length > 0) {
