@@ -86,6 +86,12 @@ fn create_window(
                         window_clone.set_inner_size(LogicalSize::new(width, height));
                     }
                 }
+            } else if msg.starts_with("clipboard:") {
+                // Format: "clipboard:text_to_copy"
+                let text = &msg[10..];
+                if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                    let _ = clipboard.set_text(text);
+                }
             } else {
                 match msg.as_str() {
                     "close_window" => {
@@ -653,6 +659,8 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         <span><kbd>Tab</kbd> Toggle View</span>
         <span><kbd>C</kbd> Contents</span>
         <span><kbd>⌘F</kbd> Search</span>
+        <span><kbd>⌘C</kbd> Copy MD</span>
+        <span><kbd>⇧⌘C</kbd> Copy Formatted</span>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>const markdownLines = [{}];</script>
@@ -1090,6 +1098,87 @@ function scrollToHeading(slug) {
     }
 }
 
+// Extract markdown for selection (used by Cmd+C)
+function extractMarkdownForSelection() {
+    const selection = window.getSelection();
+    if (!selection.rangeCount || selection.isCollapsed) return null;
+
+    try {
+        const range = selection.getRangeAt(0);
+        let minLine = Infinity;
+        let maxLine = 0;
+
+        let node = range.startContainer;
+        while (node && node !== document.body) {
+            if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
+                const lines = node.getAttribute('data-lines');
+                const [start, end] = lines.split('-').map(Number);
+                if (start && start < minLine) minLine = start;
+                if (end && end > maxLine) maxLine = end;
+            }
+            node = node.parentNode;
+        }
+
+        node = range.endContainer;
+        while (node && node !== document.body) {
+            if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
+                const lines = node.getAttribute('data-lines');
+                const [start, end] = lines.split('-').map(Number);
+                if (start && start < minLine) minLine = start;
+                if (end && end > maxLine) maxLine = end;
+            }
+            node = node.parentNode;
+        }
+
+        if (minLine !== Infinity && maxLine > 0 && typeof markdownLines !== 'undefined' && markdownLines.length > 0) {
+            const markdownBlock = markdownLines.slice(minLine - 1, maxLine).join('\n');
+            const selectedText = selection.toString();
+            let extracted = markdownBlock;
+
+            if (selectedText.trim()) {
+                const words = selectedText.trim().split(/\s+/);
+                const firstWords = words.slice(0, 3).join(' ');
+                const lastWords = words.slice(-3).join(' ');
+
+                let startIndex = markdownBlock.indexOf(firstWords);
+                if (startIndex === -1 && words.length > 0) {
+                    startIndex = markdownBlock.indexOf(words[0]);
+                }
+
+                if (startIndex !== -1) {
+                    let endIndex = markdownBlock.lastIndexOf(lastWords);
+                    if (endIndex === -1 && words.length > 0) {
+                        endIndex = markdownBlock.lastIndexOf(words[words.length - 1]);
+                    }
+                    if (endIndex !== -1) {
+                        endIndex += (endIndex === markdownBlock.lastIndexOf(lastWords) ? lastWords.length : words[words.length - 1].length);
+                    } else {
+                        endIndex = markdownBlock.length;
+                    }
+
+                    const syntaxChars = /[*_`#|\[\]()>~-]/;
+                    let expandedStart = startIndex;
+                    while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) expandedStart--;
+                    while (expandedStart > 0 && markdownBlock[expandedStart - 1] === ' ') expandedStart--;
+                    while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) expandedStart--;
+
+                    let expandedEnd = endIndex;
+                    while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) expandedEnd++;
+                    while (expandedEnd < markdownBlock.length && markdownBlock[expandedEnd] === ' ') expandedEnd++;
+                    while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) expandedEnd++;
+
+                    const candidate = markdownBlock.substring(expandedStart, expandedEnd);
+                    if (candidate.length >= selectedText.length * 0.5) {
+                        extracted = candidate;
+                    }
+                }
+            }
+            return extracted;
+        }
+    } catch (err) {}
+    return null;
+}
+
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
     // Cmd+F for search
@@ -1125,146 +1214,22 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // Cmd+C to copy
+    // Shift+Cmd+C to copy formatted (HTML)
+    if (e.shiftKey && e.metaKey && e.key === 'c') {
+        document.execCommand('copy');
+        return;
+    }
+
+    // Cmd+C to copy markdown source (GitHub view) or plain text (terminal view)
     if (e.metaKey && e.key === 'c') {
-        e.preventDefault();
-
-        // For terminal view, use execCommand (copies the displayed markdown-like text)
-        if (currentMode !== 'github') {
-            document.execCommand('copy');
-            return;
-        }
-
-        // For GitHub view, try to copy original markdown source
-        try {
-            const selection = window.getSelection();
-            if (!selection.rangeCount || selection.isCollapsed) {
-                document.execCommand('copy');
+        if (currentMode === 'github') {
+            const markdown = extractMarkdownForSelection();
+            if (markdown && window.ipc) {
+                window.ipc.postMessage('clipboard:' + markdown);
                 return;
             }
-
-            const range = selection.getRangeAt(0);
-            let minLine = Infinity;
-            let maxLine = 0;
-
-            // Walk up from selection endpoints to find data-lines elements
-            let node = range.startContainer;
-            while (node && node !== document.body) {
-                if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
-                    const lines = node.getAttribute('data-lines');
-                    const [start, end] = lines.split('-').map(Number);
-                    if (start && start < minLine) minLine = start;
-                    if (end && end > maxLine) maxLine = end;
-                }
-                node = node.parentNode;
-            }
-
-            node = range.endContainer;
-            while (node && node !== document.body) {
-                if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
-                    const lines = node.getAttribute('data-lines');
-                    const [start, end] = lines.split('-').map(Number);
-                    if (start && start < minLine) minLine = start;
-                    if (end && end > maxLine) maxLine = end;
-                }
-                node = node.parentNode;
-            }
-
-            // If we found valid line ranges, copy the markdown
-            if (minLine !== Infinity && maxLine > 0 && typeof markdownLines !== 'undefined' && markdownLines.length > 0) {
-                const markdownBlock = markdownLines.slice(minLine - 1, maxLine).join('\n');
-                const selectedText = selection.toString();
-
-                let extracted = markdownBlock; // Default to full block
-
-                if (selectedText.trim()) {
-                    // Try to find precise position using first few words
-                    const words = selectedText.trim().split(/\s+/);
-                    const firstWords = words.slice(0, 3).join(' ');
-                    const lastWords = words.slice(-3).join(' ');
-
-                    let startIndex = markdownBlock.indexOf(firstWords);
-
-                    // If first words not found, try just first word
-                    if (startIndex === -1 && words.length > 0) {
-                        startIndex = markdownBlock.indexOf(words[0]);
-                    }
-
-                    if (startIndex !== -1) {
-                        // Find end position using last words
-                        let endIndex = markdownBlock.lastIndexOf(lastWords);
-                        if (endIndex === -1 && words.length > 0) {
-                            endIndex = markdownBlock.lastIndexOf(words[words.length - 1]);
-                        }
-                        if (endIndex !== -1) {
-                            endIndex += (endIndex === markdownBlock.lastIndexOf(lastWords) ? lastWords.length : words[words.length - 1].length);
-                        } else {
-                            endIndex = markdownBlock.length;
-                        }
-
-                        // Expand to include surrounding markdown syntax
-                        const syntaxChars = /[*_`#|\[\]()>~-]/;
-
-                        // Expand left: syntax chars, then spaces, then syntax chars again
-                        // This handles cases like "| Attribute" where space separates | from text
-                        let expandedStart = startIndex;
-                        while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) {
-                            expandedStart--;
-                        }
-                        while (expandedStart > 0 && markdownBlock[expandedStart - 1] === ' ') {
-                            expandedStart--;
-                        }
-                        while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) {
-                            expandedStart--;
-                        }
-
-                        // Expand right: same pattern
-                        let expandedEnd = endIndex;
-                        while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) {
-                            expandedEnd++;
-                        }
-                        while (expandedEnd < markdownBlock.length && markdownBlock[expandedEnd] === ' ') {
-                            expandedEnd++;
-                        }
-                        while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) {
-                            expandedEnd++;
-                        }
-
-                        const candidate = markdownBlock.substring(expandedStart, expandedEnd);
-                        // Sanity check: if extraction is too short compared to selection, use full block
-                        if (candidate.length >= selectedText.length * 0.5) {
-                            extracted = candidate;
-                        }
-                    }
-                }
-
-                if (extracted) {
-                    // Save current selection
-                    const savedRanges = [];
-                    for (let i = 0; i < selection.rangeCount; i++) {
-                        savedRanges.push(selection.getRangeAt(i).cloneRange());
-                    }
-
-                    // Use textarea trick to copy plain text (more reliable in webviews)
-                    const textarea = document.createElement('textarea');
-                    textarea.value = extracted;
-                    textarea.style.position = 'fixed';
-                    textarea.style.opacity = '0';
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textarea);
-
-                    // Restore selection
-                    selection.removeAllRanges();
-                    savedRanges.forEach(r => selection.addRange(r));
-                    return;
-                }
-            }
-        } catch (err) {}
-
-        // Fallback to execCommand
-        document.execCommand('copy');
+        }
+        // Let default copy happen for terminal view or if no markdown found
         return;
     }
 
