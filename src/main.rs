@@ -308,20 +308,12 @@ fn markdown_to_html(markdown: &str) -> String {
             }
 
             Event::Start(Tag::BlockQuote(_)) => {
-                html_output.push_str(&format!(r#"<blockquote data-lines="{}-"#, start_line));
-                tag_stack.push(format!("blockquote:{}", start_line));
+                html_output.push_str(&format!(r#"<blockquote data-lines="{}-__BQ_END__">"#, start_line));
+                tag_stack.push("blockquote".to_string());
             }
             Event::End(TagEnd::BlockQuote(_)) => {
-                // Find and fix the unclosed data-lines attribute
-                if let Some(pos) = html_output.rfind(r#"data-lines=""#) {
-                    let insert_pos = html_output[pos..].find('"').map(|p| pos + p + 1);
-                    if let Some(pos) = insert_pos {
-                        // Find the dash position and insert end line
-                        if let Some(dash_pos) = html_output[pos..].find('-') {
-                            let full_pos = pos + dash_pos + 1;
-                            html_output.insert_str(full_pos, &end_line.to_string());
-                        }
-                    }
+                if let Some(pos) = html_output.rfind("__BQ_END__") {
+                    html_output.replace_range(pos..pos + 10, &end_line.to_string());
                 }
                 html_output.push_str("</blockquote>\n");
                 tag_stack.pop();
@@ -333,67 +325,70 @@ fn markdown_to_html(markdown: &str) -> String {
                     _ => None,
                 };
                 if let Some(lang) = lang {
-                    html_output.push_str(&format!(r#"<pre data-lines="{}-"><code class="language-{}">"#, start_line, lang));
+                    html_output.push_str(&format!(r#"<pre data-lines="{}-__PRE_END__"><code class="language-{}">"#, start_line, lang));
                 } else {
-                    html_output.push_str(&format!(r#"<pre data-lines="{}-"><code>"#, start_line));
+                    html_output.push_str(&format!(r#"<pre data-lines="{}-__PRE_END__"><code>"#, start_line));
                 }
-                tag_stack.push(format!("pre:{}", start_line));
+                tag_stack.push("pre".to_string());
             }
             Event::End(TagEnd::CodeBlock) => {
                 html_output.push_str("</code></pre>\n");
-                // Fix the unclosed data-lines
-                if let Some(pos) = html_output.rfind(r#"<pre data-lines=""#) {
-                    let search_start = pos + 16;
-                    if let Some(dash_rel) = html_output[search_start..].find('-') {
-                        let dash_pos = search_start + dash_rel + 1;
-                        if let Some(quote_rel) = html_output[dash_pos..].find('"') {
-                            if quote_rel == 0 {
-                                html_output.insert_str(dash_pos, &end_line.to_string());
-                            }
-                        }
-                    }
+                if let Some(pos) = html_output.rfind("__PRE_END__") {
+                    html_output.replace_range(pos..pos + 11, &end_line.to_string());
                 }
                 tag_stack.pop();
             }
 
             Event::Start(Tag::List(first_item)) => {
                 if first_item.is_some() {
-                    html_output.push_str(&format!(r#"<ol data-lines="{}-">"#, start_line));
-                    tag_stack.push(format!("ol:{}", start_line));
+                    html_output.push_str(&format!(r#"<ol data-lines="{}-__OL_END__">"#, start_line));
+                    tag_stack.push("ol".to_string());
                 } else {
-                    html_output.push_str(&format!(r#"<ul data-lines="{}-">"#, start_line));
-                    tag_stack.push(format!("ul:{}", start_line));
+                    html_output.push_str(&format!(r#"<ul data-lines="{}-__UL_END__">"#, start_line));
+                    tag_stack.push("ul".to_string());
                 }
             }
             Event::End(TagEnd::List(ordered)) => {
-                let tag = if ordered { "ol" } else { "ul" };
+                let (tag, placeholder) = if ordered { ("ol", "__OL_END__") } else { ("ul", "__UL_END__") };
+                if let Some(pos) = html_output.rfind(placeholder) {
+                    html_output.replace_range(pos..pos + placeholder.len(), &end_line.to_string());
+                }
                 html_output.push_str(&format!("</{}>", tag));
                 tag_stack.pop();
             }
 
             Event::Start(Tag::Item) => {
-                html_output.push_str(&format!(r#"<li data-lines="{}-">"#, start_line));
-                tag_stack.push(format!("li:{}", start_line));
+                html_output.push_str(&format!(r#"<li data-lines="{}-__LI_END__">"#, start_line));
+                tag_stack.push("li".to_string());
             }
             Event::End(TagEnd::Item) => {
-                // Fix the li data-lines
+                if let Some(pos) = html_output.rfind("__LI_END__") {
+                    html_output.replace_range(pos..pos + 10, &end_line.to_string());
+                }
                 html_output.push_str("</li>\n");
                 tag_stack.pop();
             }
 
             Event::Start(Tag::Table(_)) => {
-                html_output.push_str(&format!(r#"<table data-lines="{}-">"#, start_line));
-                tag_stack.push(format!("table:{}", start_line));
+                // Use placeholder for end line, replace when table ends
+                html_output.push_str(&format!(r#"<table data-lines="{}-__TABLE_END__">"#, start_line));
+                tag_stack.push("table".to_string());
             }
             Event::End(TagEnd::Table) => {
+                // Replace the placeholder with actual end line
+                if let Some(pos) = html_output.rfind("__TABLE_END__") {
+                    html_output.replace_range(pos..pos + 13, &end_line.to_string());
+                }
                 html_output.push_str("</table>\n");
                 tag_stack.pop();
             }
             Event::Start(Tag::TableHead) => {
                 html_output.push_str("<thead><tr>");
+                tag_stack.push("thead".to_string());
             }
             Event::End(TagEnd::TableHead) => {
                 html_output.push_str("</tr></thead>");
+                tag_stack.pop();
             }
             Event::Start(Tag::TableRow) => {
                 html_output.push_str("<tr>");
@@ -402,10 +397,19 @@ fn markdown_to_html(markdown: &str) -> String {
                 html_output.push_str("</tr>");
             }
             Event::Start(Tag::TableCell) => {
-                html_output.push_str("<td>");
+                // Use <th> in thead, <td> elsewhere
+                if tag_stack.iter().any(|t| t == "thead") {
+                    html_output.push_str("<th>");
+                } else {
+                    html_output.push_str("<td>");
+                }
             }
             Event::End(TagEnd::TableCell) => {
-                html_output.push_str("</td>");
+                if tag_stack.iter().any(|t| t == "thead") {
+                    html_output.push_str("</th>");
+                } else {
+                    html_output.push_str("</td>");
+                }
             }
 
             // Inline elements - route to heading buffer if inside a heading
@@ -1168,9 +1172,92 @@ document.addEventListener('keydown', function(e) {
 
             // If we found valid line ranges, copy the markdown
             if (minLine !== Infinity && maxLine > 0 && typeof markdownLines !== 'undefined' && markdownLines.length > 0) {
-                const extracted = markdownLines.slice(minLine - 1, maxLine).join('\n');
-                if (extracted && navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(extracted);
+                const markdownBlock = markdownLines.slice(minLine - 1, maxLine).join('\n');
+                const selectedText = selection.toString();
+
+                let extracted = markdownBlock; // Default to full block
+
+                if (selectedText.trim()) {
+                    // Try to find precise position using first few words
+                    const words = selectedText.trim().split(/\s+/);
+                    const firstWords = words.slice(0, 3).join(' ');
+                    const lastWords = words.slice(-3).join(' ');
+
+                    let startIndex = markdownBlock.indexOf(firstWords);
+
+                    // If first words not found, try just first word
+                    if (startIndex === -1 && words.length > 0) {
+                        startIndex = markdownBlock.indexOf(words[0]);
+                    }
+
+                    if (startIndex !== -1) {
+                        // Find end position using last words
+                        let endIndex = markdownBlock.lastIndexOf(lastWords);
+                        if (endIndex === -1 && words.length > 0) {
+                            endIndex = markdownBlock.lastIndexOf(words[words.length - 1]);
+                        }
+                        if (endIndex !== -1) {
+                            endIndex += (endIndex === markdownBlock.lastIndexOf(lastWords) ? lastWords.length : words[words.length - 1].length);
+                        } else {
+                            endIndex = markdownBlock.length;
+                        }
+
+                        // Expand to include surrounding markdown syntax
+                        const syntaxChars = /[*_`#|\[\]()>~-]/;
+
+                        // Expand left: syntax chars, then spaces, then syntax chars again
+                        // This handles cases like "| Attribute" where space separates | from text
+                        let expandedStart = startIndex;
+                        while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) {
+                            expandedStart--;
+                        }
+                        while (expandedStart > 0 && markdownBlock[expandedStart - 1] === ' ') {
+                            expandedStart--;
+                        }
+                        while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) {
+                            expandedStart--;
+                        }
+
+                        // Expand right: same pattern
+                        let expandedEnd = endIndex;
+                        while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) {
+                            expandedEnd++;
+                        }
+                        while (expandedEnd < markdownBlock.length && markdownBlock[expandedEnd] === ' ') {
+                            expandedEnd++;
+                        }
+                        while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) {
+                            expandedEnd++;
+                        }
+
+                        const candidate = markdownBlock.substring(expandedStart, expandedEnd);
+                        // Sanity check: if extraction is too short compared to selection, use full block
+                        if (candidate.length >= selectedText.length * 0.5) {
+                            extracted = candidate;
+                        }
+                    }
+                }
+
+                if (extracted) {
+                    // Save current selection
+                    const savedRanges = [];
+                    for (let i = 0; i < selection.rangeCount; i++) {
+                        savedRanges.push(selection.getRangeAt(i).cloneRange());
+                    }
+
+                    // Use textarea trick to copy plain text (more reliable in webviews)
+                    const textarea = document.createElement('textarea');
+                    textarea.value = extracted;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+
+                    // Restore selection
+                    selection.removeAllRanges();
+                    savedRanges.forEach(r => selection.addRange(r));
                     return;
                 }
             }
