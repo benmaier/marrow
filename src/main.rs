@@ -340,7 +340,8 @@ fn markdown_to_html(markdown: &str) -> String {
             Event::End(TagEnd::CodeBlock) => {
                 html_output.push_str("</code></pre>\n");
                 if let Some(pos) = html_output.rfind("__PRE_END__") {
-                    html_output.replace_range(pos..pos + 11, &end_line.to_string());
+                    // Add 1 to include the closing ``` fence line
+                    html_output.replace_range(pos..pos + 11, &(end_line + 1).to_string());
                 }
                 tag_stack.pop();
             }
@@ -1166,6 +1167,14 @@ function extractMarkdownForSelection() {
                     while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) expandedEnd++;
                     while (expandedEnd < markdownBlock.length && markdownBlock[expandedEnd] === ' ') expandedEnd++;
                     while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) expandedEnd++;
+
+                    // Check for closing code fence - only include if selection reached end of code content
+                    const remaining = markdownBlock.substring(expandedEnd);
+                    // Only add fence if remaining is ONLY whitespace + fence (nothing else between)
+                    const fenceOnlyMatch = remaining.match(/^[\s\n]*```\s*$/);
+                    if (fenceOnlyMatch) {
+                        expandedEnd = markdownBlock.length;
+                    }
 
                     const candidate = markdownBlock.substring(expandedStart, expandedEnd);
                     if (candidate.length >= selectedText.length * 0.5) {
