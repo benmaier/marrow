@@ -188,12 +188,19 @@ function extractMarkdownForSelection() {
                     } else {
                         endIndex = markdownBlock.length;
                     }
-
                     const syntaxChars = /[*_`#|\[\]()>~-]/;
                     let expandedStart = startIndex;
                     while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) expandedStart--;
                     while (expandedStart > 0 && markdownBlock[expandedStart - 1] === ' ') expandedStart--;
                     while (expandedStart > 0 && syntaxChars.test(markdownBlock[expandedStart - 1])) expandedStart--;
+
+                    // If no text (letters) between line start and selection, include full line prefix
+                    let lineStart = expandedStart;
+                    while (lineStart > 0 && markdownBlock[lineStart - 1] !== '\n') lineStart--;
+                    const prefixBeforeSelection = markdownBlock.substring(lineStart, expandedStart);
+                    if (!/[a-zA-Z]/.test(prefixBeforeSelection)) {
+                        expandedStart = lineStart;
+                    }
 
                     let expandedEnd = endIndex;
                     while (expandedEnd < markdownBlock.length && syntaxChars.test(markdownBlock[expandedEnd])) expandedEnd++;
