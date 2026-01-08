@@ -16,10 +16,8 @@ enum UserEvent {
     QuitApp,
 }
 
-// A4 aspect ratio is 1:1.414 (width:height)
-const INITIAL_WIDTH: f64 = 595.0;      // A4-ish width
-const TOC_WIDTH: f64 = 200.0;          // TOC pane width
-const HEIGHT: f64 = 842.0;             // 595 * 1.414 ≈ 842
+const INITIAL_WIDTH: f64 = 800.0;
+const HEIGHT: f64 = 900.0;
 
 struct AppWindow {
     _window: Arc<Window>,
@@ -50,28 +48,24 @@ fn create_window(
         .with_html(&full_html)
         .with_ipc_handler(move |req| {
             let msg = req.body();
-            match msg.as_str() {
-                "toc_show" => {
-                    let size = window_clone.inner_size();
-                    let scale = window_clone.scale_factor();
-                    let width = size.width as f64 / scale;
-                    let height = size.height as f64 / scale;
-                    window_clone.set_inner_size(LogicalSize::new(width + TOC_WIDTH, height));
+            if msg.starts_with("resize:") {
+                // Format: "resize:width:height"
+                let parts: Vec<&str> = msg.split(':').collect();
+                if parts.len() == 3 {
+                    if let (Ok(width), Ok(height)) = (parts[1].parse::<f64>(), parts[2].parse::<f64>()) {
+                        window_clone.set_inner_size(LogicalSize::new(width, height));
+                    }
                 }
-                "toc_hide" => {
-                    let size = window_clone.inner_size();
-                    let scale = window_clone.scale_factor();
-                    let width = size.width as f64 / scale;
-                    let height = size.height as f64 / scale;
-                    window_clone.set_inner_size(LogicalSize::new(width - TOC_WIDTH, height));
+            } else {
+                match msg.as_str() {
+                    "close_window" => {
+                        let _ = proxy_clone.send_event(UserEvent::CloseWindow(window_id));
+                    }
+                    "quit_app" => {
+                        let _ = proxy_clone.send_event(UserEvent::QuitApp);
+                    }
+                    _ => {}
                 }
-                "close_window" => {
-                    let _ = proxy_clone.send_event(UserEvent::CloseWindow(window_id));
-                }
-                "quit_app" => {
-                    let _ = proxy_clone.send_event(UserEvent::QuitApp);
-                }
-                _ => {}
             }
         })
         .with_navigation_handler(|url| {
@@ -644,6 +638,28 @@ mark.search-highlight.current {
 const JS: &str = r##"
 let currentMode = 'github';
 let tocVisible = false;
+const TOC_WIDTH = 200;
+let fontSizeLevel = 0;  // -3 to +5 range
+const BASE_FONT_SIZE = 15;
+const TERMINAL_BASE_SIZE = 11;
+
+function adjustFontSize(delta) {
+    fontSizeLevel = Math.max(-3, Math.min(5, fontSizeLevel + delta));
+    applyFontSize();
+    try { localStorage.setItem('marrow-fontsize', fontSizeLevel); } catch(e) {}
+}
+
+function resetFontSize() {
+    fontSizeLevel = 0;
+    applyFontSize();
+    try { localStorage.setItem('marrow-fontsize', fontSizeLevel); } catch(e) {}
+}
+
+function applyFontSize() {
+    const scale = 1 + (fontSizeLevel * 0.1);  // Each level is 10%
+    document.body.style.fontSize = (BASE_FONT_SIZE * scale) + 'px';
+    document.getElementById('terminal-view').style.fontSize = (TERMINAL_BASE_SIZE * scale) + 'px';
+}
 
 function setMode(mode) {
     currentMode = mode;
@@ -658,13 +674,22 @@ function setMode(mode) {
 }
 
 function toggleToc() {
+    const currentWidth = window.innerWidth;
+    const currentHeight = window.innerHeight;
+
     tocVisible = !tocVisible;
     const toc = document.getElementById('toc');
     toc.classList.toggle('hidden', !tocVisible);
 
-    // Resize window via IPC
+    // Resize window via IPC - send the new absolute size
     if (window.ipc) {
-        window.ipc.postMessage(tocVisible ? 'toc_show' : 'toc_hide');
+        let newWidth;
+        if (tocVisible) {
+            newWidth = currentWidth + TOC_WIDTH;
+        } else {
+            newWidth = currentWidth - TOC_WIDTH;
+        }
+        window.ipc.postMessage('resize:' + newWidth + ':' + currentHeight);
     }
 
     try { localStorage.setItem('marrow-toc', tocVisible ? 'visible' : 'hidden'); } catch(e) {}
@@ -699,6 +724,39 @@ document.addEventListener('keydown', function(e) {
     if (e.metaKey && e.key === 'q') {
         e.preventDefault();
         if (window.ipc) window.ipc.postMessage('quit_app');
+        return;
+    }
+
+    // Cmd+A to select all
+    if (e.metaKey && e.key === 'a') {
+        e.preventDefault();
+        const content = document.getElementById('content');
+        const range = document.createRange();
+        range.selectNodeContents(content);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+    }
+
+    // Cmd+Plus to increase font size
+    if (e.metaKey && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        adjustFontSize(1);
+        return;
+    }
+
+    // Cmd+Minus to decrease font size
+    if (e.metaKey && e.key === '-') {
+        e.preventDefault();
+        adjustFontSize(-1);
+        return;
+    }
+
+    // Cmd+0 to reset font size
+    if (e.metaKey && e.key === '0') {
+        e.preventDefault();
+        resetFontSize();
         return;
     }
 
@@ -1098,6 +1156,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (window.ipc) {
                 window.ipc.postMessage('toc_show');
             }
+        }
+
+        const savedFontSize = localStorage.getItem('marrow-fontsize');
+        if (savedFontSize) {
+            fontSizeLevel = parseInt(savedFontSize, 10);
+            applyFontSize();
         }
     } catch(e) {}
 
