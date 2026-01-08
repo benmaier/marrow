@@ -7,20 +7,22 @@
 </head>
 <body>
     <div class="container">
-        <main class="content github" id="content">
-            <div id="github-view" class="view-content">{github_view}</div>
-            <div id="terminal-view" class="view-content" style="display:none;">{terminal_view}</div>
-        </main>
+        <div class="content-wrapper">
+            <div class="search-bar hidden" id="search-bar">
+                <input type="text" id="search-input" placeholder="Search..." />
+                <span id="search-count"></span>
+                <button onclick="searchPrev()">↑</button>
+                <button onclick="searchNext()">↓</button>
+                <button onclick="closeSearch()">✕</button>
+            </div>
+            <main class="content github" id="content">
+                <div id="github-view" class="view-content">{github_view}</div>
+                <div id="terminal-view" class="view-content" style="display:none;">{terminal_view}</div>
+            </main>
+        </div>
         <nav class="toc hidden" id="toc">
             {toc}
         </nav>
-    </div>
-    <div class="search-bar hidden" id="search-bar">
-        <input type="text" id="search-input" placeholder="Search..." />
-        <span id="search-count"></span>
-        <button onclick="searchPrev()">↑</button>
-        <button onclick="searchNext()">↓</button>
-        <button onclick="closeSearch()">✕</button>
     </div>
     <div class="hotkey-bar">
         <span><kbd>Tab</kbd> Toggle View</span>

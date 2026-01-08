@@ -243,8 +243,11 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // Cmd+A to select all
+    // Cmd+A to select all (but let default work in input fields)
     if (e.metaKey && e.key === 'a') {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return; // Let default select-all work in input fields
+        }
         e.preventDefault();
         const content = document.getElementById('content');
         const range = document.createRange();
@@ -715,6 +718,13 @@ function updateTocHighlight() {
         }
     }
 }
+
+// Save settings on window resize (debounced)
+let resizeTimeout;
+window.addEventListener('resize', function() {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(saveSettings, 500);
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
