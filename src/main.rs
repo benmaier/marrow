@@ -257,8 +257,7 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         <button onclick="closeSearch()">✕</button>
     </div>
     <div class="hotkey-bar">
-        <span><kbd>G</kbd> GitHub</span>
-        <span><kbd>T</kbd> Terminal</span>
+        <span><kbd>Tab</kbd> Toggle View</span>
         <span><kbd>C</kbd> Contents</span>
         <span><kbd>⌘F</kbd> Search</span>
     </div>
@@ -661,7 +660,26 @@ function applyFontSize() {
     document.getElementById('terminal-view').style.fontSize = (TERMINAL_BASE_SIZE * scale) + 'px';
 }
 
-function setMode(mode) {
+function getCurrentHeadingId() {
+    const content = document.getElementById('content');
+    const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
+    const headings = document.querySelectorAll(activeView + ' h1, ' + activeView + ' h2, ' + activeView + ' h3, ' + activeView + ' h4, ' + activeView + ' h5, ' + activeView + ' h6, ' + activeView + ' [id].md-heading');
+
+    let currentHeading = null;
+    const scrollTop = content.scrollTop;
+
+    for (const heading of headings) {
+        if (heading.offsetTop <= scrollTop + 100) {
+            currentHeading = heading;
+        } else {
+            break;
+        }
+    }
+
+    return currentHeading ? currentHeading.id : null;
+}
+
+function setMode(mode, scrollToId) {
     currentMode = mode;
     const content = document.getElementById('content');
     content.className = 'content ' + mode;
@@ -669,6 +687,15 @@ function setMode(mode) {
     // Toggle views
     document.getElementById('github-view').style.display = mode === 'github' ? 'block' : 'none';
     document.getElementById('terminal-view').style.display = mode === 'terminal' ? 'block' : 'none';
+
+    // Scroll to the same section in the new view
+    if (scrollToId) {
+        const newView = mode === 'github' ? '#github-view' : '#terminal-view';
+        const el = document.querySelector(newView + ' #' + CSS.escape(scrollToId));
+        if (el) {
+            el.scrollIntoView({ block: 'start' });
+        }
+    }
 
     try { localStorage.setItem('marrow-mode', mode); } catch(e) {}
 }
@@ -766,17 +793,20 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // Ignore other shortcuts if typing in input or if modifier keys are held
+    // Ignore other shortcuts if typing in input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    // Tab to toggle view (before modifier check)
+    if (e.key === 'Tab') {
+        e.preventDefault();
+        const headingId = getCurrentHeadingId();
+        setMode(currentMode === 'github' ? 'terminal' : 'github', headingId);
+        return;
+    }
+
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch(e.key.toLowerCase()) {
-        case 'g':
-            setMode('github');
-            break;
-        case 't':
-            setMode('terminal');
-            break;
         case 'c':
             toggleToc();
             break;
