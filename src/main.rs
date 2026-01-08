@@ -1,4 +1,4 @@
-use pulldown_cmark::{html, Options, Parser, HeadingLevel, Event, Tag, TagEnd};
+use pulldown_cmark::{Options, Parser, HeadingLevel, Event, Tag, TagEnd, CodeBlockKind};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -223,16 +223,361 @@ fn extract_toc(markdown: &str) -> Vec<(usize, String)> {
     toc
 }
 
+/// Convert a byte offset in the source to a 1-based line number
+fn byte_offset_to_line(markdown: &str, byte_offset: usize) -> usize {
+    markdown[..byte_offset.min(markdown.len())]
+        .chars()
+        .filter(|&c| c == '\n')
+        .count() + 1
+}
+
 fn markdown_to_html(markdown: &str) -> String {
     let options = Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TABLES
         | Options::ENABLE_FOOTNOTES
         | Options::ENABLE_TASKLISTS;
 
-    let parser = Parser::new_ext(markdown, options);
+    let parser = Parser::new_ext(markdown, options).into_offset_iter();
     let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
+
+    // Track current block's line range
+    let mut block_start_line: Option<usize> = None;
+    let mut pending_block_tag: Option<String> = None;
+
+    // Heading-specific tracking: collect content and plain text for slug
+    let mut in_heading: Option<String> = None; // The heading tag (h1, h2, etc.)
+    let mut heading_start_line: usize = 0;
+    let mut heading_html_content = String::new();
+    let mut heading_plain_text = String::new();
+
+    // Stack to handle nested elements
+    let mut tag_stack: Vec<String> = Vec::new();
+
+    for (event, range) in parser {
+        let start_line = byte_offset_to_line(markdown, range.start);
+        let end_line = byte_offset_to_line(markdown, range.end);
+
+        match event {
+            Event::Start(Tag::Paragraph) => {
+                block_start_line = Some(start_line);
+                pending_block_tag = Some("p".to_string());
+                tag_stack.push("p".to_string());
+            }
+            Event::End(TagEnd::Paragraph) => {
+                if let (Some(start), Some(_)) = (block_start_line, &pending_block_tag) {
+                    html_output.push_str(&format!(r#"<p data-lines="{}-{}">"#, start, end_line));
+                }
+                html_output.push_str("</p>\n");
+                block_start_line = None;
+                pending_block_tag = None;
+                tag_stack.pop();
+            }
+
+            Event::Start(Tag::Heading { level, .. }) => {
+                let tag = match level {
+                    HeadingLevel::H1 => "h1",
+                    HeadingLevel::H2 => "h2",
+                    HeadingLevel::H3 => "h3",
+                    HeadingLevel::H4 => "h4",
+                    HeadingLevel::H5 => "h5",
+                    HeadingLevel::H6 => "h6",
+                };
+                in_heading = Some(tag.to_string());
+                heading_start_line = start_line;
+                heading_html_content.clear();
+                heading_plain_text.clear();
+                tag_stack.push(tag.to_string());
+            }
+            Event::End(TagEnd::Heading(level)) => {
+                let tag = match level {
+                    HeadingLevel::H1 => "h1",
+                    HeadingLevel::H2 => "h2",
+                    HeadingLevel::H3 => "h3",
+                    HeadingLevel::H4 => "h4",
+                    HeadingLevel::H5 => "h5",
+                    HeadingLevel::H6 => "h6",
+                };
+                let slug = slugify(&heading_plain_text);
+                html_output.push_str(&format!(
+                    r#"<{} id="{}" data-lines="{}-{}">{}</{}>"#,
+                    tag, slug, heading_start_line, end_line, heading_html_content, tag
+                ));
+                html_output.push('\n');
+                in_heading = None;
+                tag_stack.pop();
+            }
+
+            Event::Start(Tag::BlockQuote(_)) => {
+                html_output.push_str(&format!(r#"<blockquote data-lines="{}-"#, start_line));
+                tag_stack.push(format!("blockquote:{}", start_line));
+            }
+            Event::End(TagEnd::BlockQuote(_)) => {
+                // Find and fix the unclosed data-lines attribute
+                if let Some(pos) = html_output.rfind(r#"data-lines=""#) {
+                    let insert_pos = html_output[pos..].find('"').map(|p| pos + p + 1);
+                    if let Some(pos) = insert_pos {
+                        // Find the dash position and insert end line
+                        if let Some(dash_pos) = html_output[pos..].find('-') {
+                            let full_pos = pos + dash_pos + 1;
+                            html_output.insert_str(full_pos, &end_line.to_string());
+                        }
+                    }
+                }
+                html_output.push_str("</blockquote>\n");
+                tag_stack.pop();
+            }
+
+            Event::Start(Tag::CodeBlock(kind)) => {
+                let lang = match &kind {
+                    CodeBlockKind::Fenced(lang) if !lang.is_empty() => Some(lang.as_ref()),
+                    _ => None,
+                };
+                if let Some(lang) = lang {
+                    html_output.push_str(&format!(r#"<pre data-lines="{}-"><code class="language-{}">"#, start_line, lang));
+                } else {
+                    html_output.push_str(&format!(r#"<pre data-lines="{}-"><code>"#, start_line));
+                }
+                tag_stack.push(format!("pre:{}", start_line));
+            }
+            Event::End(TagEnd::CodeBlock) => {
+                html_output.push_str("</code></pre>\n");
+                // Fix the unclosed data-lines
+                if let Some(pos) = html_output.rfind(r#"<pre data-lines=""#) {
+                    let search_start = pos + 16;
+                    if let Some(dash_rel) = html_output[search_start..].find('-') {
+                        let dash_pos = search_start + dash_rel + 1;
+                        if let Some(quote_rel) = html_output[dash_pos..].find('"') {
+                            if quote_rel == 0 {
+                                html_output.insert_str(dash_pos, &end_line.to_string());
+                            }
+                        }
+                    }
+                }
+                tag_stack.pop();
+            }
+
+            Event::Start(Tag::List(first_item)) => {
+                if first_item.is_some() {
+                    html_output.push_str(&format!(r#"<ol data-lines="{}-">"#, start_line));
+                    tag_stack.push(format!("ol:{}", start_line));
+                } else {
+                    html_output.push_str(&format!(r#"<ul data-lines="{}-">"#, start_line));
+                    tag_stack.push(format!("ul:{}", start_line));
+                }
+            }
+            Event::End(TagEnd::List(ordered)) => {
+                let tag = if ordered { "ol" } else { "ul" };
+                html_output.push_str(&format!("</{}>", tag));
+                tag_stack.pop();
+            }
+
+            Event::Start(Tag::Item) => {
+                html_output.push_str(&format!(r#"<li data-lines="{}-">"#, start_line));
+                tag_stack.push(format!("li:{}", start_line));
+            }
+            Event::End(TagEnd::Item) => {
+                // Fix the li data-lines
+                html_output.push_str("</li>\n");
+                tag_stack.pop();
+            }
+
+            Event::Start(Tag::Table(_)) => {
+                html_output.push_str(&format!(r#"<table data-lines="{}-">"#, start_line));
+                tag_stack.push(format!("table:{}", start_line));
+            }
+            Event::End(TagEnd::Table) => {
+                html_output.push_str("</table>\n");
+                tag_stack.pop();
+            }
+            Event::Start(Tag::TableHead) => {
+                html_output.push_str("<thead><tr>");
+            }
+            Event::End(TagEnd::TableHead) => {
+                html_output.push_str("</tr></thead>");
+            }
+            Event::Start(Tag::TableRow) => {
+                html_output.push_str("<tr>");
+            }
+            Event::End(TagEnd::TableRow) => {
+                html_output.push_str("</tr>");
+            }
+            Event::Start(Tag::TableCell) => {
+                html_output.push_str("<td>");
+            }
+            Event::End(TagEnd::TableCell) => {
+                html_output.push_str("</td>");
+            }
+
+            // Inline elements - route to heading buffer if inside a heading
+            Event::Start(Tag::Emphasis) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("<em>");
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str("<em>");
+                }
+            }
+            Event::End(TagEnd::Emphasis) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("</em>");
+                } else {
+                    html_output.push_str("</em>");
+                }
+            }
+            Event::Start(Tag::Strong) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("<strong>");
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str("<strong>");
+                }
+            }
+            Event::End(TagEnd::Strong) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("</strong>");
+                } else {
+                    html_output.push_str("</strong>");
+                }
+            }
+            Event::Start(Tag::Strikethrough) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("<del>");
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str("<del>");
+                }
+            }
+            Event::End(TagEnd::Strikethrough) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("</del>");
+                } else {
+                    html_output.push_str("</del>");
+                }
+            }
+            Event::Start(Tag::Link { dest_url, title, .. }) => {
+                let link_html = if title.is_empty() {
+                    format!(r#"<a href="{}">"#, dest_url)
+                } else {
+                    format!(r#"<a href="{}" title="{}">"#, dest_url, title)
+                };
+                if in_heading.is_some() {
+                    heading_html_content.push_str(&link_html);
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str(&link_html);
+                }
+            }
+            Event::End(TagEnd::Link) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("</a>");
+                } else {
+                    html_output.push_str("</a>");
+                }
+            }
+            Event::Start(Tag::Image { dest_url, title, .. }) => {
+                let mut img_html = format!(r#"<img src="{}" alt=""#, dest_url);
+                if !title.is_empty() {
+                    img_html.push_str(&format!(r#"" title="{}""#, title));
+                }
+                if in_heading.is_some() {
+                    heading_html_content.push_str(&img_html);
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str(&img_html);
+                }
+            }
+            Event::End(TagEnd::Image) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str(r#"" />"#);
+                } else {
+                    html_output.push_str(r#"" />"#);
+                }
+            }
+
+            Event::Text(text) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str(&html_escape(&text));
+                    heading_plain_text.push_str(&text);
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str(&html_escape(&text));
+                }
+            }
+            Event::Code(code) => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str(&format!("<code>{}</code>", html_escape(&code)));
+                    heading_plain_text.push_str(&code);
+                } else {
+                    if pending_block_tag.is_some() {
+                        flush_pending_tag(&mut html_output, &pending_block_tag, block_start_line, end_line);
+                        pending_block_tag = None;
+                    }
+                    html_output.push_str(&format!("<code>{}</code>", html_escape(&code)));
+                }
+            }
+            Event::SoftBreak => {
+                if in_heading.is_some() {
+                    heading_html_content.push('\n');
+                } else {
+                    html_output.push('\n');
+                }
+            }
+            Event::HardBreak => {
+                if in_heading.is_some() {
+                    heading_html_content.push_str("<br />\n");
+                } else {
+                    html_output.push_str("<br />\n");
+                }
+            }
+            Event::Rule => {
+                html_output.push_str(&format!(r#"<hr data-lines="{}-{}" />"#, start_line, end_line));
+            }
+
+            Event::Html(html) => {
+                html_output.push_str(&html);
+            }
+
+            Event::FootnoteReference(name) => {
+                html_output.push_str(&format!(r##"<sup class="footnote-ref"><a href="#fn-{}">[{}]</a></sup>"##, name, name));
+            }
+
+            Event::TaskListMarker(checked) => {
+                if checked {
+                    html_output.push_str(r#"<input type="checkbox" checked disabled /> "#);
+                } else {
+                    html_output.push_str(r#"<input type="checkbox" disabled /> "#);
+                }
+            }
+
+            _ => {}
+        }
+    }
+
     html_output
+}
+
+fn flush_pending_tag(output: &mut String, tag: &Option<String>, start_line: Option<usize>, end_line: usize) {
+    if let (Some(tag), Some(start)) = (tag, start_line) {
+        output.push_str(&format!(r#"<{} data-lines="{}-{}">"#, tag, start, end_line));
+    }
 }
 
 fn slugify(text: &str) -> String {
@@ -258,8 +603,22 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         })
         .collect();
 
-    let content_with_ids = add_heading_ids(rendered_html);
+    // Headings already have IDs from markdown_to_html, no need to add them
     let raw_markdown_escaped = html_escape(content);
+
+    // Create JSON array of markdown lines for copy handler
+    let markdown_lines_json: String = content
+        .lines()
+        .map(|line| {
+            // Escape for JSON string
+            let escaped = line
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\t', "\\t");
+            format!("\"{}\"", escaped)
+        })
+        .collect::<Vec<_>>()
+        .join(",");
 
     format!(
         r##"<!DOCTYPE html>
@@ -292,56 +651,17 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         <span><kbd>⌘F</kbd> Search</span>
     </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>const markdownLines = [{}];</script>
     <script>{}</script>
 </body>
 </html>"##,
         CSS,
-        content_with_ids,
+        rendered_html,
         raw_markdown_escaped,
         toc_html,
+        markdown_lines_json,
         JS
     )
-}
-
-fn add_heading_ids(html: &str) -> String {
-    let mut result = html.to_string();
-    for tag in ["h1", "h2", "h3", "h4", "h5", "h6"] {
-        let open_tag = format!("<{}>", tag);
-        let close_tag = format!("</{}>", tag);
-
-        let mut new_result = String::new();
-        let mut remaining = result.as_str();
-
-        while let Some(start) = remaining.find(&open_tag) {
-            new_result.push_str(&remaining[..start]);
-            remaining = &remaining[start + open_tag.len()..];
-
-            if let Some(end) = remaining.find(&close_tag) {
-                let heading_text = &remaining[..end];
-                let slug = slugify(&strip_html_tags(heading_text));
-                new_result.push_str(&format!(r#"<{} id="{}">{}</{}>"#, tag, slug, heading_text, tag));
-                remaining = &remaining[end + close_tag.len()..];
-            }
-        }
-        new_result.push_str(remaining);
-        result = new_result;
-    }
-    result
-}
-
-fn strip_html_tags(s: &str) -> String {
-    let mut result = String::new();
-    let mut in_tag = false;
-    for c in s.chars() {
-        if c == '<' {
-            in_tag = true;
-        } else if c == '>' {
-            in_tag = false;
-        } else if !in_tag {
-            result.push(c);
-        }
-    }
-    result
 }
 
 fn html_escape(text: &str) -> String {
@@ -611,7 +931,7 @@ mark.search-highlight.current {
     border-radius: 2px;
 }
 
-.github table { border-collapse: collapse; margin-bottom: 16px; width: 100%; }
+.github table { border-collapse: collapse; margin-bottom: 16px; }
 .github th, .github td { padding: 6px 13px; border: 1px solid var(--border-color); }
 .github th { font-weight: 600; background: var(--bg-secondary); }
 .github tr:nth-child(2n) { background: var(--bg-secondary); }
@@ -760,7 +1080,7 @@ function toggleToc() {
 function scrollToHeading(slug) {
     // Find element in the currently active view
     const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
-    const el = document.querySelector(activeView + ' #' + slug);
+    const el = document.querySelector(activeView + ' #' + CSS.escape(slug));
     if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
@@ -798,6 +1118,66 @@ document.addEventListener('keydown', function(e) {
         const selection = window.getSelection();
         selection.removeAllRanges();
         selection.addRange(range);
+        return;
+    }
+
+    // Cmd+C to copy
+    if (e.metaKey && e.key === 'c') {
+        e.preventDefault();
+
+        // For terminal view, use execCommand (copies the displayed markdown-like text)
+        if (currentMode !== 'github') {
+            document.execCommand('copy');
+            return;
+        }
+
+        // For GitHub view, try to copy original markdown source
+        try {
+            const selection = window.getSelection();
+            if (!selection.rangeCount || selection.isCollapsed) {
+                document.execCommand('copy');
+                return;
+            }
+
+            const range = selection.getRangeAt(0);
+            let minLine = Infinity;
+            let maxLine = 0;
+
+            // Walk up from selection endpoints to find data-lines elements
+            let node = range.startContainer;
+            while (node && node !== document.body) {
+                if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
+                    const lines = node.getAttribute('data-lines');
+                    const [start, end] = lines.split('-').map(Number);
+                    if (start && start < minLine) minLine = start;
+                    if (end && end > maxLine) maxLine = end;
+                }
+                node = node.parentNode;
+            }
+
+            node = range.endContainer;
+            while (node && node !== document.body) {
+                if (node.nodeType === 1 && node.getAttribute && node.getAttribute('data-lines')) {
+                    const lines = node.getAttribute('data-lines');
+                    const [start, end] = lines.split('-').map(Number);
+                    if (start && start < minLine) minLine = start;
+                    if (end && end > maxLine) maxLine = end;
+                }
+                node = node.parentNode;
+            }
+
+            // If we found valid line ranges, copy the markdown
+            if (minLine !== Infinity && maxLine > 0 && typeof markdownLines !== 'undefined' && markdownLines.length > 0) {
+                const extracted = markdownLines.slice(minLine - 1, maxLine).join('\n');
+                if (extracted && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(extracted);
+                    return;
+                }
+            }
+        } catch (err) {}
+
+        // Fallback to execCommand
+        document.execCommand('copy');
         return;
     }
 
@@ -1111,9 +1491,9 @@ function highlightMarkdown() {
 
         let processed = escapeHtml(content);
 
-        // Headings - add ID for navigation
-        if (processed.match(/^#{1,6}\s/)) {
-            const headingText = processed.replace(/^#+\s*/, '');
+        // Headings - add ID for navigation (use unescaped content for slug to match Rust)
+        if (content.match(/^#{1,6}\s/)) {
+            const headingText = content.replace(/^#+\s*/, '');
             const slug = slugify(headingText);
             html += makeLine('<span class="md-heading" id="' + slug + '">' + processed + '</span>', indent);
             continue;
@@ -1137,8 +1517,10 @@ function highlightMarkdown() {
                 html += makeLine('<span class="md-table-sep">' + processed + '</span>', indent);
             } else {
                 let tableLine = processed;
-                tableLine = tableLine.replace(/(\*\*|__)(.+?)\1/g, '<span class="md-bold">$1$2$1</span>');
-                tableLine = tableLine.replace(/(\*|(?<!\w)_)(.+?)\1(?!\w)/g, '<span class="md-italic">$1$2$1</span>');
+                tableLine = tableLine.replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">&#42;&#42;$1&#42;&#42;</span>');
+                tableLine = tableLine.replace(/__(.+?)__/g, '<span class="md-bold">&#95;&#95;$1&#95;&#95;</span>');
+                tableLine = tableLine.replace(/\*(.+?)\*/g, '<span class="md-italic">&#42;$1&#42;</span>');
+                tableLine = tableLine.replace(/(?<!\w)_(.+?)_(?!\w)/g, '<span class="md-italic">&#95;$1&#95;</span>');
                 tableLine = highlightInlineCode(tableLine);
                 tableLine = tableLine.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
                 html += makeLine('<span class="md-table">' + tableLine + '</span>', indent);
@@ -1149,9 +1531,11 @@ function highlightMarkdown() {
         // List items
         processed = processed.replace(/^([-*+]|\d+\.)\s/, '<span class="md-list-marker">$1</span> ');
 
-        // Inline formatting
-        processed = processed.replace(/(\*\*|__)(.+?)\1/g, '<span class="md-bold">$1$2$1</span>');
-        processed = processed.replace(/(\*|(?<!\w)_)(.+?)\1(?!\w)/g, '<span class="md-italic">$1$2$1</span>');
+        // Inline formatting (use HTML entities for markers to prevent re-matching)
+        processed = processed.replace(/\*\*(.+?)\*\*/g, '<span class="md-bold">&#42;&#42;$1&#42;&#42;</span>');
+        processed = processed.replace(/__(.+?)__/g, '<span class="md-bold">&#95;&#95;$1&#95;&#95;</span>');
+        processed = processed.replace(/\*(.+?)\*/g, '<span class="md-italic">&#42;$1&#42;</span>');
+        processed = processed.replace(/(?<!\w)_(.+?)_(?!\w)/g, '<span class="md-italic">&#95;$1&#95;</span>');
         processed = highlightInlineCode(processed);
         processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
 
