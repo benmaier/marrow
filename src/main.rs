@@ -24,6 +24,28 @@ struct AppWindow {
     _webview: WebView,
 }
 
+fn truncate_end(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", s.chars().take(max - 1).collect::<String>())
+    }
+}
+
+fn truncate_middle(s: &str, max: usize) -> String {
+    let len = s.chars().count();
+    if len <= max {
+        s.to_string()
+    } else {
+        let keep = max - 1; // -1 for the ellipsis
+        let left = keep / 2;
+        let right = keep - left;
+        let left_part: String = s.chars().take(left).collect();
+        let right_part: String = s.chars().skip(len - right).collect();
+        format!("{}…{}", left_part, right_part)
+    }
+}
+
 fn create_window(
     event_loop: &EventLoopWindowTarget<UserEvent>,
     proxy: EventLoopProxy<UserEvent>,
@@ -34,8 +56,16 @@ fn create_window(
     let html_content = markdown_to_html(&content);
     let full_html = build_full_html(&content, &html_content, &toc, &filename);
 
+    // Build window title: "First Heading · filename · Marrow 🦴"
+    let first_heading = toc.first().map(|(_, text)| truncate_end(text, 20));
+    let short_filename = truncate_middle(&filename, 20);
+    let title = match first_heading {
+        Some(heading) => format!("{} · {} · Marrow 🦴", heading, short_filename),
+        None => format!("{} · Marrow 🦴", short_filename),
+    };
+
     let window = WindowBuilder::new()
-        .with_title(format!("Marrow - {}", filename))
+        .with_title(title)
         .with_inner_size(LogicalSize::new(INITIAL_WIDTH, HEIGHT))
         .build(event_loop)?;
 
