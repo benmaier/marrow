@@ -1065,7 +1065,7 @@ function highlightMarkdown() {
                 tableLine = tableLine.replace(/(\*\*|__)(.+?)\1/g, '<span class="md-bold">$1$2$1</span>');
                 tableLine = tableLine.replace(/(\*|(?<!\w)_)(.+?)\1(?!\w)/g, '<span class="md-italic">$1$2$1</span>');
                 tableLine = tableLine.replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>');
-                tableLine = tableLine.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link" target="_blank">[$1]($2)</a>');
+                tableLine = tableLine.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
                 html += '<span class="md-table">' + tableLine + '</span>\n';
             }
             continue;
@@ -1085,7 +1085,7 @@ function highlightMarkdown() {
         line = line.replace(/`([^`]+)`/g, '<span class="md-code">`$1`</span>');
 
         // Links [text](url) - make them clickable
-        line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link" target="_blank">[$1]($2)</a>');
+        line = line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">[$1]($2)</a>');
 
         html += line + '\n';
     }
