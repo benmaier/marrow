@@ -482,20 +482,32 @@ fn markdown_to_html(markdown: &str, base_dir: Option<&std::path::Path>) -> Strin
                     CodeBlockKind::Fenced(lang) if !lang.is_empty() => Some(lang.as_ref()),
                     _ => None,
                 };
-                if let Some(lang) = lang {
+                if lang == Some("math") {
+                    // Math block - render for KaTeX processing
+                    html_output.push_str(&format!(r#"<div class="math-block" data-lines="{}-__MATH_END__">$$"#, start_line));
+                    tag_stack.push("math".to_string());
+                } else if let Some(lang) = lang {
                     html_output.push_str(&format!(r#"<pre data-lines="{}-__PRE_END__"><code class="language-{}">"#, start_line, lang));
+                    tag_stack.push("pre".to_string());
                 } else {
                     html_output.push_str(&format!(r#"<pre data-lines="{}-__PRE_END__"><code>"#, start_line));
+                    tag_stack.push("pre".to_string());
                 }
-                tag_stack.push("pre".to_string());
             }
             Event::End(TagEnd::CodeBlock) => {
-                html_output.push_str("</code></pre>\n");
-                if let Some(pos) = html_output.rfind("__PRE_END__") {
-                    // Add 1 to include the closing ``` fence line
-                    html_output.replace_range(pos..pos + 11, &(end_line + 1).to_string());
+                let tag_type = tag_stack.pop().unwrap_or_default();
+                if tag_type == "math" {
+                    html_output.push_str("$$</div>\n");
+                    if let Some(pos) = html_output.rfind("__MATH_END__") {
+                        html_output.replace_range(pos..pos + 12, &(end_line + 1).to_string());
+                    }
+                } else {
+                    html_output.push_str("</code></pre>\n");
+                    if let Some(pos) = html_output.rfind("__PRE_END__") {
+                        // Add 1 to include the closing ``` fence line
+                        html_output.replace_range(pos..pos + 11, &(end_line + 1).to_string());
+                    }
                 }
-                tag_stack.pop();
             }
 
             Event::Start(Tag::List(first_item)) => {
@@ -760,6 +772,9 @@ const JS: &str = include_str!("script.js");
 const HTML_TEMPLATE: &str = include_str!("template.html");
 const HLJS_JS: &str = include_str!("../vendor/highlight.min.js");
 const HLJS_CSS: &str = include_str!("../vendor/github-dark.min.css");
+const KATEX_JS: &str = include_str!("../vendor/katex.min.js");
+const KATEX_CSS: &str = include_str!("../vendor/katex-embedded.min.css");
+const KATEX_AUTO: &str = include_str!("../vendor/auto-render.min.js");
 
 fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str, settings: &Settings) -> String {
     let settings_json = serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string());
@@ -793,6 +808,9 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
     HTML_TEMPLATE
         .replace("{hljs_css}", HLJS_CSS)
         .replace("{hljs_js}", HLJS_JS)
+        .replace("{katex_css}", KATEX_CSS)
+        .replace("{katex_js}", KATEX_JS)
+        .replace("{katex_auto}", KATEX_AUTO)
         .replace("{css}", CSS)
         .replace("{github_view}", rendered_html)
         .replace("{terminal_view}", &raw_markdown_escaped)

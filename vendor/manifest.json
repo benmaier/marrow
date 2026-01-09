@@ -3,6 +3,7 @@
   "dependencies": {
     "highlight.js": {
       "version": "11.9.0",
+      "license": "BSD-3-Clause",
       "files": {
         "highlight.min.js": {
           "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js",
@@ -11,6 +12,22 @@
         "github-dark.min.css": {
           "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css",
           "sha256": "9f208d022102b1d0c7aebfecd8e42ca7997d5de636649d2b31ea63093d809019"
+        }
+      }
+    },
+    "katex": {
+      "version": "0.16.9",
+      "license": "MIT",
+      "note": "katex-embedded.min.css contains base64-encoded fonts (SIL OFL licensed)",
+      "files": {
+        "katex.min.js": {
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+        },
+        "auto-render.min.js": {
+          "url": "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+        },
+        "katex-embedded.min.css": {
+          "note": "Generated from katex.min.css with fonts embedded as base64"
         }
       }
     }

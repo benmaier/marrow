@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <style>{hljs_css}</style>
+    <style>{katex_css}</style>
     <style>{css}</style>
 </head>
 <body>
@@ -32,8 +33,19 @@
         <span><kbd>⇧⌘C</kbd> Copy Formatted</span>
     </div>
     <script>{hljs_js}</script>
+    <script>{katex_js}</script>
+    <script>{katex_auto}</script>
     <script>const markdownLines = [{markdown_lines}];</script>
     <script>const initialSettings = {settings};</script>
     <script>{js}</script>
+    <script>
+        renderMathInElement(document.getElementById('github-view'), {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '$', right: '$', display: false}
+            ],
+            throwOnError: false
+        });
+    </script>
 </body>
 </html>

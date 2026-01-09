@@ -285,6 +285,12 @@ mark.search-highlight.current {
 .github strong { font-weight: 600; color: var(--text-primary); }
 .github em { font-style: italic; }
 
+.github .math-block {
+    text-align: center;
+    margin: 16px 0;
+    overflow-x: auto;
+}
+
 /* Terminal Mode Styles - Raw markdown with syntax highlighting */
 #terminal-view {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
