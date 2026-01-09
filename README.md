@@ -159,7 +159,7 @@ Marrow uses [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) with f
 
 ### Syntax Highlighting
 
-Code blocks support 180+ languages via [highlight.js](https://highlightjs.org/). Specify the language after the opening fence:
+Code blocks support 180+ languages with syntax highlighting. Specify the language after the opening fence:
 
 ````markdown
 ```python
@@ -242,16 +242,13 @@ This approach preserves formatting markers (`**`, `` ` ``, `#`, etc.) that brows
 | [directories](https://github.com/dirs-dev/directories-rs) | Platform config paths |
 | [serde](https://serde.rs/) | Serialization |
 
-Vendored:
-- [highlight.js](https://highlightjs.org/) - Syntax highlighting (see below)
-
 ## Vendored Dependencies
 
 Marrow works fully offline. JavaScript dependencies are vendored in the `vendor/` directory rather than loaded from CDNs.
 
 **Why vendoring instead of npm?**
 
-With only one JS dependency (highlight.js), the overhead of npm tooling isn't justified. Instead:
+With only one JS dependency, the overhead of npm tooling isn't justified. Instead:
 
 - `vendor/manifest.json` tracks versions and SHA256 checksums
 - `scripts/update-vendor.sh` downloads and verifies dependencies
