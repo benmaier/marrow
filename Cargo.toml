@@ -14,6 +14,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 arboard = "3"
 base64 = "0.22"
+urlencoding = "2"
 
 [package.metadata.bundle]
 name = "Marrow"

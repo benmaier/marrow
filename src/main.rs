@@ -168,6 +168,9 @@ fn create_window(
     let proxy_clone = proxy.clone();
     let settings_clone = Arc::clone(settings);
 
+    // Clone base_dir for navigation handler
+    let nav_base_dir = base_dir.map(|p| p.to_path_buf());
+
     let webview = WebViewBuilder::new()
         .with_html(&full_html)
         .with_ipc_handler(move |req| {
@@ -206,15 +209,36 @@ fn create_window(
                 }
             }
         })
-        .with_navigation_handler(|url| {
+        .with_navigation_handler(move |url| {
+            // Allow internal navigation
             if url.starts_with("about:") || url.starts_with("data:") {
                 return true;
             }
+            // Open http/https links in default browser
             if url.starts_with("http://") || url.starts_with("https://") {
                 let _ = std::process::Command::new("open").arg(&url).spawn();
                 return false;
             }
-            true
+            // Handle file:// URLs
+            if let Some(file_path) = url.strip_prefix("file://") {
+                let decoded = urlencoding::decode(file_path).unwrap_or_else(|_| file_path.into());
+                let path = PathBuf::from(decoded.as_ref());
+                if path.exists() {
+                    let _ = std::process::Command::new("open").arg(&path).spawn();
+                }
+                return false;
+            }
+            // Local file link - resolve relative to markdown file's directory
+            if let Some(ref base) = nav_base_dir {
+                let decoded = urlencoding::decode(&url).unwrap_or_else(|_| url.clone().into());
+                let path = base.join(decoded.as_ref());
+                if path.exists() {
+                    let _ = std::process::Command::new("open").arg(&path).spawn();
+                    return false;
+                }
+            }
+            // Block navigation to unknown URLs
+            false
         })
         .build(&window)?;
 
