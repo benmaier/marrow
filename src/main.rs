@@ -135,8 +135,9 @@ fn create_window(
     let current_settings = settings.lock().unwrap().clone();
 
     let (content, filename) = load_file(path);
+    let base_dir = path.and_then(|p| p.parent());
     let toc = extract_toc(&content);
-    let html_content = markdown_to_html(&content);
+    let html_content = markdown_to_html(&content, base_dir);
     let full_html = build_full_html(&content, &html_content, &toc, &filename, &current_settings);
 
     // Build window title: "First Heading · filename · Marrow 🦴"
@@ -350,7 +351,45 @@ fn byte_offset_to_line(markdown: &str, byte_offset: usize) -> usize {
         .count() + 1
 }
 
-fn markdown_to_html(markdown: &str) -> String {
+fn resolve_image_url(url: &str, base_dir: Option<&std::path::Path>) -> String {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    // Already absolute URL or data URI
+    if url.starts_with("http://") || url.starts_with("https://")
+        || url.starts_with("file://") || url.starts_with("data:") {
+        return url.to_string();
+    }
+
+    // Try to resolve relative path and embed as data URI
+    if let Some(base) = base_dir {
+        let path = base.join(url);
+        if path.exists() {
+            if let Ok(data) = std::fs::read(&path) {
+                let mime = get_mime_type(&path);
+                let b64 = STANDARD.encode(&data);
+                return format!("data:{};base64,{}", mime, b64);
+            }
+        }
+    }
+
+    // Return as-is if we can't resolve
+    url.to_string()
+}
+
+fn get_mime_type(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("ico") => "image/x-icon",
+        Some("bmp") => "image/bmp",
+        _ => "application/octet-stream",
+    }
+}
+
+fn markdown_to_html(markdown: &str, base_dir: Option<&std::path::Path>) -> String {
     let options = Options::ENABLE_STRIKETHROUGH
         | Options::ENABLE_TABLES
         | Options::ENABLE_FOOTNOTES
@@ -611,7 +650,8 @@ fn markdown_to_html(markdown: &str) -> String {
                 }
             }
             Event::Start(Tag::Image { dest_url, title, .. }) => {
-                let mut img_html = format!(r#"<img src="{}" alt=""#, dest_url);
+                let resolved_url = resolve_image_url(&dest_url, base_dir);
+                let mut img_html = format!(r#"<img src="{}" alt=""#, resolved_url);
                 if !title.is_empty() {
                     img_html.push_str(&format!(r#"" title="{}""#, title));
                 }

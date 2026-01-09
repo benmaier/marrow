@@ -1334,6 +1334,7 @@ name = "marrow"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "base64",
  "directories",
  "pulldown-cmark",
  "serde",
