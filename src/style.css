@@ -303,8 +303,8 @@ mark.search-highlight.current {
 }
 
 /* Markdown syntax highlighting - muted colors */
-.md-heading { color: #e0c080; }
-.md-bold { color: #d4a056; }
+.md-heading { color: #e0c080; font-weight: bold; }
+.md-bold { color: #d4a056; font-weight: bold; }
 .md-italic { color: #a0a0d0; font-style: italic; }
 .md-code { color: #80b080; }
 .md-code-fence { color: #666; }
@@ -334,8 +334,8 @@ mark.search-highlight.current {
 }
 
 /* Light mode overrides */
-body.light .md-heading { color: #0550ae; }
-body.light .md-bold { color: #953800; }
+body.light .md-heading { color: #0550ae; font-weight: bold; }
+body.light .md-bold { color: #953800; font-weight: bold; }
 body.light .md-italic { color: #6639ba; }
 body.light .md-code { color: #0550ae; }
 body.light .md-code-fence { color: #6e7781; }
