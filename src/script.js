@@ -2,6 +2,7 @@
 let currentMode = initialSettings.view_mode || 'github';
 let tocVisible = initialSettings.toc_visible || false;
 let fontSizeLevel = initialSettings.font_size_level || 0;
+let currentTheme = initialSettings.theme || 'dark';
 const TOC_WIDTH = 200;
 const BASE_FONT_SIZE = 15;
 const TERMINAL_BASE_SIZE = 11;
@@ -16,7 +17,8 @@ function saveSettings() {
             window_height: height,
             toc_visible: tocVisible,
             view_mode: currentMode,
-            font_size_level: fontSizeLevel
+            font_size_level: fontSizeLevel,
+            theme: currentTheme
         };
         window.ipc.postMessage('save_settings:' + JSON.stringify(settings));
     }
@@ -38,6 +40,16 @@ function applyFontSize() {
     const scale = 1 + (fontSizeLevel * 0.1);  // Each level is 10%
     document.body.style.fontSize = (BASE_FONT_SIZE * scale) + 'px';
     document.getElementById('terminal-view').style.fontSize = (TERMINAL_BASE_SIZE * scale) + 'px';
+}
+
+function setTheme(theme) {
+    currentTheme = theme;
+    document.body.classList.toggle('light', theme === 'light');
+    saveSettings();
+}
+
+function toggleTheme() {
+    setTheme(currentTheme === 'dark' ? 'light' : 'dark');
 }
 
 function getCurrentHeadingId() {
@@ -327,6 +339,9 @@ document.addEventListener('keydown', function(e) {
     switch(e.key.toLowerCase()) {
         case 'c':
             toggleToc();
+            break;
+        case 'l':
+            toggleTheme();
             break;
     }
 });
@@ -754,6 +769,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Apply font size
     applyFontSize();
+
+    // Apply theme
+    if (currentTheme === 'light') {
+        document.body.classList.add('light');
+    }
 
     // Initial highlight
     updateTocHighlight();

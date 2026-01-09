@@ -24,6 +24,7 @@ struct Settings {
     toc_visible: bool,
     view_mode: String,
     font_size_level: i32,
+    theme: String,
 }
 
 impl Default for Settings {
@@ -34,6 +35,7 @@ impl Default for Settings {
             toc_visible: false,
             view_mode: "github".to_string(),
             font_size_level: 0,
+            theme: "dark".to_string(),
         }
     }
 }

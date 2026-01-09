@@ -16,6 +16,18 @@
     --code-bg: #161b22;
 }
 
+body.light {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #eaeef2;
+    --text-primary: #24292f;
+    --text-secondary: #57606a;
+    --text-muted: #8c959f;
+    --border-color: #d0d7de;
+    --accent-color: #0969da;
+    --code-bg: #f6f8fa;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     background: var(--bg-primary);
@@ -320,3 +332,68 @@ mark.search-highlight.current {
     font-family: inherit;
     font-size: inherit;
 }
+
+/* Light mode overrides */
+body.light .md-heading { color: #0550ae; }
+body.light .md-bold { color: #953800; }
+body.light .md-italic { color: #6639ba; }
+body.light .md-code { color: #0550ae; }
+body.light .md-code-fence { color: #6e7781; }
+body.light .md-link-text { color: #0969da; }
+body.light .md-link-url { color: #6e7781; }
+body.light .md-list-marker { color: #cf222e; }
+body.light .md-blockquote { color: #57606a; }
+body.light .md-hr { color: #d0d7de; }
+body.light .md-table { color: #24292f; }
+body.light .md-table-sep { color: #6e7781; }
+body.light .md-link { color: #0969da; }
+body.light .md-code-block-wrapper { background: rgba(0, 0, 0, 0.06); }
+
+body.light mark.search-highlight {
+    background: #fff8c5;
+    color: var(--text-primary);
+}
+body.light mark.search-highlight.current {
+    background: #fae17d;
+}
+
+/* Light mode highlight.js overrides (GitHub Light theme colors) */
+body.light .hljs {
+    color: #24292f;
+    background: #f6f8fa;
+}
+body.light .hljs-comment,
+body.light .hljs-quote { color: #6e7781; }
+body.light .hljs-keyword,
+body.light .hljs-selector-tag,
+body.light .hljs-addition { color: #cf222e; }
+body.light .hljs-number,
+body.light .hljs-string,
+body.light .hljs-meta .hljs-meta-string,
+body.light .hljs-literal,
+body.light .hljs-doctag,
+body.light .hljs-regexp { color: #0a3069; }
+body.light .hljs-title,
+body.light .hljs-section,
+body.light .hljs-name,
+body.light .hljs-selector-id,
+body.light .hljs-selector-class { color: #0550ae; }
+body.light .hljs-attribute,
+body.light .hljs-attr,
+body.light .hljs-variable,
+body.light .hljs-template-variable,
+body.light .hljs-class .hljs-title,
+body.light .hljs-type { color: #953800; }
+body.light .hljs-symbol,
+body.light .hljs-bullet,
+body.light .hljs-subst,
+body.light .hljs-meta,
+body.light .hljs-meta .hljs-keyword,
+body.light .hljs-selector-attr,
+body.light .hljs-selector-pseudo,
+body.light .hljs-link { color: #0550ae; }
+body.light .hljs-built_in,
+body.light .hljs-deletion { color: #cf222e; }
+body.light .hljs-formula { background: #f6f8fa; }
+body.light .hljs-emphasis { font-style: italic; }
+body.light .hljs-strong { font-weight: bold; }
