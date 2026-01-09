@@ -242,8 +242,32 @@ This approach preserves formatting markers (`**`, `` ` ``, `#`, etc.) that brows
 | [directories](https://github.com/dirs-dev/directories-rs) | Platform config paths |
 | [serde](https://serde.rs/) | Serialization |
 
-External (loaded via CDN):
-- [highlight.js](https://highlightjs.org/) - Syntax highlighting
+Vendored:
+- [highlight.js](https://highlightjs.org/) - Syntax highlighting (see below)
+
+## Vendored Dependencies
+
+Marrow works fully offline. JavaScript dependencies are vendored in the `vendor/` directory rather than loaded from CDNs.
+
+**Why vendoring instead of npm?**
+
+With only one JS dependency (highlight.js), the overhead of npm tooling isn't justified. Instead:
+
+- `vendor/manifest.json` tracks versions and SHA256 checksums
+- `scripts/update-vendor.sh` downloads and verifies dependencies
+- Files are embedded at compile time via `include_str!()`
+
+This approach provides version tracking and checksum verification without requiring Node.js to build. If more dependencies are added in the future, migrating to npm may make sense.
+
+**Updating dependencies:**
+
+```bash
+# Edit version in vendor/manifest.json, then:
+./scripts/update-vendor.sh
+
+# Verify checksums match:
+./scripts/update-vendor.sh --verify
+```
 
 ## License
 

@@ -1,0 +1,18 @@
+{
+  "description": "Vendored dependencies for offline builds. Run scripts/update-vendor.sh to update.",
+  "dependencies": {
+    "highlight.js": {
+      "version": "11.9.0",
+      "files": {
+        "highlight.min.js": {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js",
+          "sha256": "837a6fa5b0c736b52bbde2b2b6190f305da3fc9ed41681db5321507057b5c846"
+        },
+        "github-dark.min.css": {
+          "url": "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css",
+          "sha256": "9f208d022102b1d0c7aebfecd8e42ca7997d5de636649d2b31ea63093d809019"
+        }
+      }
+    }
+  }
+}

@@ -718,6 +718,8 @@ fn slugify(text: &str) -> String {
 const CSS: &str = include_str!("style.css");
 const JS: &str = include_str!("script.js");
 const HTML_TEMPLATE: &str = include_str!("template.html");
+const HLJS_JS: &str = include_str!("../vendor/highlight.min.js");
+const HLJS_CSS: &str = include_str!("../vendor/github-dark.min.css");
 
 fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str, settings: &Settings) -> String {
     let settings_json = serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string());
@@ -749,6 +751,8 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         .join(",");
 
     HTML_TEMPLATE
+        .replace("{hljs_css}", HLJS_CSS)
+        .replace("{hljs_js}", HLJS_JS)
         .replace("{css}", CSS)
         .replace("{github_view}", rendered_html)
         .replace("{terminal_view}", &raw_markdown_escaped)
