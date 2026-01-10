@@ -60,17 +60,16 @@
                 throwOnError: false
             });
         }
-        // Render math in notebook markdown cells
-        const notebookView = document.getElementById('notebook-view');
-        if (notebookView) {
-            renderMathInElement(notebookView, {
+        // Render math in notebook markdown cells only (not code cells or outputs)
+        document.querySelectorAll('#notebook-view .nb-markdown-cell').forEach(cell => {
+            renderMathInElement(cell, {
                 delimiters: [
                     {left: '$$', right: '$$', display: true},
                     {left: '$', right: '$', display: false}
                 ],
                 throwOnError: false
             });
-        }
+        });
     </script>
 </body>
 </html>
