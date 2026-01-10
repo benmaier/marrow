@@ -551,6 +551,85 @@ fn strip_ansi_codes(s: &str) -> String {
     result
 }
 
+// Convert ANSI escape codes to HTML spans with colors
+fn ansi_to_html(s: &str) -> String {
+    let mut result = String::new();
+    let mut in_span = false;
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Parse ANSI sequence
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+                let mut code = String::new();
+                while let Some(&next) = chars.peek() {
+                    if next.is_ascii_digit() || next == ';' {
+                        code.push(chars.next().unwrap());
+                    } else {
+                        chars.next(); // consume the letter (usually 'm')
+                        break;
+                    }
+                }
+
+                // Close current span if open
+                if in_span {
+                    result.push_str("</span>");
+                    in_span = false;
+                }
+
+                // Map ANSI code to color
+                let color = match code.as_str() {
+                    "31" | "0;31" | "1;31" => Some("#e06c75"), // red
+                    "32" | "0;32" | "1;32" => Some("#98c379"), // green
+                    "33" | "0;33" | "1;33" => Some("#e5c07b"), // yellow
+                    "34" | "0;34" | "1;34" => Some("#61afef"), // blue
+                    "35" | "0;35" | "1;35" => Some("#c678dd"), // magenta
+                    "36" | "0;36" | "1;36" => Some("#56b6c2"), // cyan
+                    "37" | "0;37" | "1;37" => Some("#abb2bf"), // white
+                    "38;5;160" | "38;5;196" => Some("#e06c75"), // extended red
+                    "38;5;28" | "38;5;34" => Some("#98c379"), // extended green
+                    _ => None, // reset or unknown
+                };
+
+                if let Some(col) = color {
+                    result.push_str(&format!("<span style=\"color:{}\">", col));
+                    in_span = true;
+                }
+            }
+        } else {
+            // Escape HTML characters
+            match c {
+                '<' => result.push_str("&lt;"),
+                '>' => result.push_str("&gt;"),
+                '&' => result.push_str("&amp;"),
+                _ => result.push(c),
+            }
+        }
+    }
+
+    // Close any open span
+    if in_span {
+        result.push_str("</span>");
+    }
+    result
+}
+
+// Strip outer <pre style="..."> wrapper from HTML but keep inner content
+fn strip_pre_wrapper(html: &str) -> String {
+    let trimmed = html.trim();
+    // Check if it starts with <pre and ends with </pre>
+    if trimmed.starts_with("<pre") && trimmed.ends_with("</pre>") {
+        // Find the end of opening tag
+        if let Some(end_tag_pos) = trimmed.find('>') {
+            let inner = &trimmed[end_tag_pos + 1..trimmed.len() - 6]; // remove "</pre>"
+            // Also strip trailing newline in inner content
+            return inner.trim_end_matches('\n').to_string();
+        }
+    }
+    html.to_string()
+}
+
 /// Convert notebook to native HTML rendering
 fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> (String, Vec<(usize, String)>) {
     let mut html = String::from("<div class=\"notebook\">\n");
@@ -653,6 +732,24 @@ fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
 "#,
                         b64
                     ));
+                } else if let Some(html_content) = data.get("text/html") {
+                    // Prefer HTML output over plain text
+                    let html_str = html_content.to_string();
+                    let cleaned = strip_pre_wrapper(&html_str);
+                    // Only show Out[n] for execute_result, not display_data
+                    let prompt = if output.output_type == "execute_result" {
+                        format!(r#"<div class="nb-output-header"><span class="nb-prompt nb-out">Out[{}]:</span></div>"#, exec_count)
+                    } else {
+                        String::new()
+                    };
+                    html.push_str(&format!(
+                        r#"        <div class="nb-output nb-output-html">
+            {}
+            <div class="nb-output-content">{}</div>
+        </div>
+"#,
+                        prompt, cleaned
+                    ));
                 } else if let Some(text) = data.get("text/plain") {
                     let escaped = html_escape(&text.to_string());
                     // Only show Out[n] for execute_result, not display_data
@@ -673,29 +770,29 @@ fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
             }
         }
         "error" => {
-            let mut error_text = String::new();
+            let mut error_html = String::new();
             if let Some(ename) = &output.ename {
-                error_text.push_str(ename);
+                error_html.push_str(&format!("<span style=\"color:#e06c75;font-weight:bold\">{}</span>", html_escape(ename)));
                 if let Some(evalue) = &output.evalue {
-                    error_text.push_str(": ");
-                    error_text.push_str(evalue);
+                    error_html.push_str(": ");
+                    error_html.push_str(&html_escape(evalue));
                 }
-                error_text.push('\n');
+                error_html.push_str("\n");
             }
             if let Some(tb) = &output.traceback {
                 for line in tb {
-                    let clean = strip_ansi_codes(line);
-                    error_text.push_str(&clean);
-                    error_text.push('\n');
+                    // Convert ANSI codes to HTML spans with colors
+                    let colored = ansi_to_html(line);
+                    error_html.push_str(&colored);
+                    error_html.push_str("\n");
                 }
             }
-            let escaped = html_escape(&error_text);
             html.push_str(&format!(
                 r#"        <div class="nb-output nb-output-error">
             <div class="nb-output-content">{}</div>
         </div>
 "#,
-                escaped
+                error_html
             ));
         }
         _ => {}
