@@ -68,3 +68,6 @@ Fields per extension: `window_width`, `window_height`, `toc_visible`, `view_mode
 - `save_settings:ext:{json}` - Save settings for extension (e.g., `save_settings:md:{...}`)
 - `close_window` - Close current window
 - `quit_app` - Quit application
+
+## TODO
+- **First launch theme detection**: On first launch (no settings file exists), detect macOS dark/light mode preference and use that as the default theme. Use `defaults read -g AppleInterfaceStyle` (returns "Dark" if dark mode, error if light mode).

@@ -296,8 +296,13 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // Cmd+C to copy markdown source (GitHub view) or plain text (terminal view)
+    // Cmd+C to copy markdown source (GitHub view) or formatted (notebooks)
     if (e.metaKey && e.key === 'c') {
+        if (isNotebook) {
+            // For notebooks, copy formatted (same as execCommand)
+            document.execCommand('copy');
+            return;
+        }
         if (currentMode === 'github') {
             const markdown = extractMarkdownForSelection();
             if (markdown && window.ipc) {
