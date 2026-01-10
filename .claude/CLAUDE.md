@@ -1,61 +1,55 @@
 # Marrow - Project Notes
 
 ## Overview
-Marrow is a native macOS markdown viewer built with Rust (wry/tao). It has dual rendering modes (GitHub-style HTML and Terminal raw markdown), smart copy, TOC, search, and light/dark themes.
+Marrow is a native macOS markdown and Jupyter notebook viewer built with Rust (wry/tao). It has dual rendering modes (GitHub-style HTML and Terminal raw markdown), smart copy, TOC, search, light/dark themes, and per-extension settings.
 
 ## Project Structure
-- `src/main.rs` - Rust: window management, settings, IPC handlers
+- `src/main.rs` - Rust: window management, settings, IPC handlers, ipynb parsing
 - `src/script.js` - JavaScript: UI logic, keyboard shortcuts, theme/mode switching
 - `src/style.css` - CSS: all styling including light/dark themes
 - `src/template.html` - HTML template with placeholders
+- `vendor/` - Vendored dependencies (highlight.js, KaTeX)
 - Files are embedded at compile time via `include_str!()`
 
 ## Build Commands
-Always use full cargo path or source env (non-interactive bash doesn't have cargo in PATH):
+**ALWAYS use the Makefile for building and installing.** Never use cargo directly.
 
 ```bash
-# Build only
-/Users/bfmaier/.cargo/bin/cargo build --release
-
-# Or with make (needs PATH)
 PATH="$HOME/.cargo/bin:$PATH" make install
 ```
 
 Make targets:
-- `make build` - Build release binary
-- `make bundle` - Create Marrow.app bundle
+- `make build` - Build release binary only
+- `make bundle` - Create Marrow.app bundle (includes icon generation)
 - `make install` - Bundle and copy to /Applications
+- `make icon` - Regenerate icon from `icon/marrow5.png`
+
+The Makefile handles:
+- Icon generation from `icon/marrow5.png`
+- Document type associations (.md, .ipynb)
+- UTI declarations for file type recognition
 
 ## Updating the App Icon
-1. Place new PNG in `icon/` (e.g., `icon/marrow4.png`)
-2. Generate iconset and install:
-```bash
-# Generate all icon sizes
-mkdir -p icon/icon.iconset
-sips -z 1024 1024 icon/marrow4.png --out icon/icon.iconset/icon_512x512@2x.png
-sips -z 512 512 icon/marrow4.png --out icon/icon.iconset/icon_512x512.png
-sips -z 512 512 icon/marrow4.png --out icon/icon.iconset/icon_256x256@2x.png
-sips -z 256 256 icon/marrow4.png --out icon/icon.iconset/icon_256x256.png
-sips -z 256 256 icon/marrow4.png --out icon/icon.iconset/icon_128x128@2x.png
-sips -z 128 128 icon/marrow4.png --out icon/icon.iconset/icon_128x128.png
-sips -z 64 64 icon/marrow4.png --out icon/icon.iconset/icon_32x32@2x.png
-sips -z 32 32 icon/marrow4.png --out icon/icon.iconset/icon_32x32.png
-sips -z 32 32 icon/marrow4.png --out icon/icon.iconset/icon_16x16@2x.png
-sips -z 16 16 icon/marrow4.png --out icon/icon.iconset/icon_16x16.png
-
-# Convert to icns
-iconutil -c icns icon/icon.iconset -o icon/icon.icns
-
-# Copy to app and refresh icon cache
-cp icon/icon.icns /Applications/Marrow.app/Contents/Resources/icon.icns
-touch /Applications/Marrow.app
-killall Finder Dock
-```
+1. Replace `icon/marrow5.png` with new icon
+2. Run `make install` (icon is auto-generated from marrow5.png)
 
 ## Settings
 Stored at: `~/Library/Application Support/com.marrow.app/settings.json`
 
-Fields: `window_width`, `window_height`, `toc_visible`, `view_mode`, `font_size_level`, `theme`
+Settings are per-extension (e.g., .md and .ipynb can have different themes/layouts).
+
+Structure:
+```json
+{
+  "default": { ... },
+  "extensions": {
+    "md": { "window_width": 800, "theme": "dark", ... },
+    "ipynb": { "window_width": 900, "theme": "light", ... }
+  }
+}
+```
+
+Fields per extension: `window_width`, `window_height`, `toc_visible`, `view_mode`, `font_size_level`, `theme`
 
 ## Keyboard Shortcuts
 - `Tab` - Toggle GitHub/Terminal view
@@ -71,6 +65,6 @@ Fields: `window_width`, `window_height`, `toc_visible`, `view_mode`, `font_size_
 ## IPC Messages (JS → Rust)
 - `resize:width:height` - Resize window
 - `clipboard:text` - Copy text to clipboard
-- `save_settings:{json}` - Save settings to file
+- `save_settings:ext:{json}` - Save settings for extension (e.g., `save_settings:md:{...}`)
 - `close_window` - Close current window
 - `quit_app` - Quit application

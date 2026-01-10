@@ -1,5 +1,6 @@
 use pulldown_cmark::{Options, Parser, HeadingLevel, Event, Tag, TagEnd, CodeBlockKind};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -40,19 +41,95 @@ impl Default for Settings {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+struct AllSettings {
+    #[serde(default)]
+    default: Settings,
+    #[serde(default)]
+    extensions: HashMap<String, Settings>,
+}
+
+impl Default for AllSettings {
+    fn default() -> Self {
+        Self {
+            default: Settings::default(),
+            extensions: HashMap::new(),
+        }
+    }
+}
+
+impl AllSettings {
+    fn get_for_extension(&self, ext: &str) -> &Settings {
+        self.extensions.get(ext).unwrap_or(&self.default)
+    }
+
+    fn set_for_extension(&mut self, ext: &str, settings: Settings) {
+        self.extensions.insert(ext.to_string(), settings);
+    }
+}
+
+// Jupyter Notebook structures
+#[derive(Deserialize)]
+struct Notebook {
+    cells: Vec<NotebookCell>,
+    #[allow(dead_code)]
+    metadata: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct NotebookCell {
+    cell_type: String,
+    source: StringOrArray,
+    #[serde(default)]
+    outputs: Vec<CellOutput>,
+    #[allow(dead_code)]
+    execution_count: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum StringOrArray {
+    String(String),
+    Array(Vec<String>),
+}
+
+impl StringOrArray {
+    fn to_string(&self) -> String {
+        match self {
+            StringOrArray::String(s) => s.clone(),
+            StringOrArray::Array(arr) => arr.join(""),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct CellOutput {
+    output_type: String,
+    #[serde(default)]
+    text: Option<StringOrArray>,
+    #[serde(default)]
+    data: Option<HashMap<String, StringOrArray>>,
+    #[serde(default)]
+    ename: Option<String>,
+    #[serde(default)]
+    evalue: Option<String>,
+    #[serde(default)]
+    traceback: Option<Vec<String>>,
+}
+
 fn get_settings_path() -> Option<PathBuf> {
     directories::ProjectDirs::from("com", "marrow", "app")
         .map(|dirs| dirs.config_dir().join("settings.json"))
 }
 
-fn load_settings() -> Settings {
+fn load_settings() -> AllSettings {
     get_settings_path()
         .and_then(|path| std::fs::read_to_string(&path).ok())
         .and_then(|contents| serde_json::from_str(&contents).ok())
         .unwrap_or_default()
 }
 
-fn save_settings(settings: &Settings) {
+fn save_settings(settings: &AllSettings) {
     if let Some(path) = get_settings_path() {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -129,16 +206,25 @@ fn create_window(
     event_loop: &EventLoopWindowTarget<UserEvent>,
     proxy: EventLoopProxy<UserEvent>,
     path: Option<&PathBuf>,
-    settings: &Arc<Mutex<Settings>>,
+    settings: &Arc<Mutex<AllSettings>>,
     existing_windows: &HashMap<WindowId, AppWindow>,
 ) -> Result<(WindowId, AppWindow), Box<dyn std::error::Error>> {
-    let current_settings = settings.lock().unwrap().clone();
+    // Extract file extension for per-extension settings
+    let extension = path
+        .and_then(|p| p.extension())
+        .and_then(|e| e.to_str())
+        .unwrap_or("md")
+        .to_string();
+
+    let all_settings = settings.lock().unwrap();
+    let current_settings = all_settings.get_for_extension(&extension).clone();
+    drop(all_settings);
 
     let (content, filename) = load_file(path);
     let base_dir = path.and_then(|p| p.parent());
     let toc = extract_toc(&content);
     let html_content = markdown_to_html(&content, base_dir);
-    let full_html = build_full_html(&content, &html_content, &toc, &filename, &current_settings);
+    let full_html = build_full_html(&content, &html_content, &toc, &filename, &current_settings, &extension);
 
     // Build window title: "First Heading · filename · Marrow 🦴"
     let first_heading = toc.first().map(|(_, text)| truncate_end(text, 20));
@@ -190,12 +276,16 @@ fn create_window(
                     let _ = clipboard.set_text(text);
                 }
             } else if msg.starts_with("save_settings:") {
-                // Format: "save_settings:{json}"
-                let json = &msg[14..];
-                if let Ok(new_settings) = serde_json::from_str::<Settings>(json) {
-                    let mut settings = settings_clone.lock().unwrap();
-                    *settings = new_settings;
-                    save_settings(&settings);
+                // Format: "save_settings:ext:{json}" e.g. "save_settings:md:{...}"
+                let rest = &msg[14..];
+                if let Some(colon_pos) = rest.find(':') {
+                    let ext = &rest[..colon_pos];
+                    let json = &rest[colon_pos + 1..];
+                    if let Ok(new_settings) = serde_json::from_str::<Settings>(json) {
+                        let mut all_settings = settings_clone.lock().unwrap();
+                        all_settings.set_for_extension(ext, new_settings);
+                        save_settings(&all_settings);
+                    }
                 }
             } else {
                 match msg.as_str() {
@@ -311,14 +401,141 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 }
 
+fn notebook_to_markdown(notebook: &Notebook) -> String {
+    let mut md = String::new();
+
+    for (i, cell) in notebook.cells.iter().enumerate() {
+        if i > 0 {
+            md.push_str("\n---\n\n");
+        }
+
+        match cell.cell_type.as_str() {
+            "markdown" => {
+                md.push_str(&cell.source.to_string());
+                md.push_str("\n\n");
+            }
+            "code" => {
+                // Code cell - wrap source in python fence
+                md.push_str("```python\n");
+                md.push_str(&cell.source.to_string());
+                if !cell.source.to_string().ends_with('\n') {
+                    md.push('\n');
+                }
+                md.push_str("```\n\n");
+
+                // Process outputs
+                for output in &cell.outputs {
+                    match output.output_type.as_str() {
+                        "stream" => {
+                            if let Some(text) = &output.text {
+                                md.push_str("```\n");
+                                md.push_str(&text.to_string());
+                                if !text.to_string().ends_with('\n') {
+                                    md.push('\n');
+                                }
+                                md.push_str("```\n\n");
+                            }
+                        }
+                        "execute_result" | "display_data" => {
+                            if let Some(data) = &output.data {
+                                // Check for image first
+                                if let Some(img) = data.get("image/png") {
+                                    let b64 = img.to_string().replace('\n', "");
+                                    md.push_str(&format!("![output](data:image/png;base64,{})\n\n", b64));
+                                } else if let Some(img) = data.get("image/jpeg") {
+                                    let b64 = img.to_string().replace('\n', "");
+                                    md.push_str(&format!("![output](data:image/jpeg;base64,{})\n\n", b64));
+                                } else if let Some(text) = data.get("text/plain") {
+                                    md.push_str("```\n");
+                                    md.push_str(&text.to_string());
+                                    if !text.to_string().ends_with('\n') {
+                                        md.push('\n');
+                                    }
+                                    md.push_str("```\n\n");
+                                }
+                            }
+                        }
+                        "error" => {
+                            md.push_str("```\n");
+                            if let Some(ename) = &output.ename {
+                                md.push_str(ename);
+                                if let Some(evalue) = &output.evalue {
+                                    md.push_str(": ");
+                                    md.push_str(evalue);
+                                }
+                                md.push('\n');
+                            }
+                            if let Some(tb) = &output.traceback {
+                                for line in tb {
+                                    // Strip ANSI codes from traceback
+                                    let clean = strip_ansi_codes(line);
+                                    md.push_str(&clean);
+                                    md.push('\n');
+                                }
+                            }
+                            md.push_str("```\n\n");
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            "raw" => {
+                md.push_str("```\n");
+                md.push_str(&cell.source.to_string());
+                if !cell.source.to_string().ends_with('\n') {
+                    md.push('\n');
+                }
+                md.push_str("```\n\n");
+            }
+            _ => {}
+        }
+    }
+
+    md
+}
+
+fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            // Skip until we hit a letter (end of ANSI sequence)
+            while let Some(&next) = chars.peek() {
+                chars.next();
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 fn load_file(path: Option<&PathBuf>) -> (String, String) {
     if let Some(path) = path {
-        match std::fs::read_to_string(path) {
-            Ok(c) => (c, path.file_name().and_then(|n| n.to_str()).unwrap_or("untitled").to_string()),
-            Err(e) => (format!("# Error\n\nCould not load file: {}", e), "Error".to_string()),
+        let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("untitled").to_string();
+
+        // Check if it's a Jupyter notebook
+        if path.extension().map(|e| e == "ipynb").unwrap_or(false) {
+            match std::fs::read_to_string(path) {
+                Ok(contents) => {
+                    match serde_json::from_str::<Notebook>(&contents) {
+                        Ok(notebook) => (notebook_to_markdown(&notebook), filename),
+                        Err(e) => (format!("# Error\n\nCould not parse notebook: {}", e), "Error".to_string()),
+                    }
+                }
+                Err(e) => (format!("# Error\n\nCould not load file: {}", e), "Error".to_string()),
+            }
+        } else {
+            match std::fs::read_to_string(path) {
+                Ok(c) => (c, filename),
+                Err(e) => (format!("# Error\n\nCould not load file: {}", e), "Error".to_string()),
+            }
         }
     } else {
-        ("# Welcome to Marrow\n\nOpen a markdown file to get started.\n\nDrag and drop a `.md` file or open one with Marrow.".to_string(), "Marrow".to_string())
+        ("# Welcome to Marrow\n\nOpen a markdown file to get started.\n\nDrag and drop a `.md` or `.ipynb` file or open one with Marrow.".to_string(), "Marrow".to_string())
     }
 }
 
@@ -800,8 +1017,13 @@ const KATEX_JS: &str = include_str!("../vendor/katex.min.js");
 const KATEX_CSS: &str = include_str!("../vendor/katex-embedded.min.css");
 const KATEX_AUTO: &str = include_str!("../vendor/auto-render.min.js");
 
-fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str, settings: &Settings) -> String {
-    let settings_json = serde_json::to_string(settings).unwrap_or_else(|_| "{}".to_string());
+fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str, settings: &Settings, extension: &str) -> String {
+    // Include extension in settings for JS
+    let mut settings_with_ext = serde_json::to_value(settings).unwrap_or(serde_json::json!({}));
+    if let Some(obj) = settings_with_ext.as_object_mut() {
+        obj.insert("extension".to_string(), serde_json::json!(extension));
+    }
+    let settings_json = serde_json::to_string(&settings_with_ext).unwrap_or_else(|_| "{}".to_string());
 
     let toc_html: String = toc
         .iter()

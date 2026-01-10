@@ -3,6 +3,7 @@ let currentMode = initialSettings.view_mode || 'github';
 let tocVisible = initialSettings.toc_visible || false;
 let fontSizeLevel = initialSettings.font_size_level || 0;
 let currentTheme = initialSettings.theme || 'dark';
+const currentExtension = initialSettings.extension || 'md';
 const TOC_WIDTH = 200;
 const BASE_FONT_SIZE = 15;
 const TERMINAL_BASE_SIZE = 11;
@@ -20,7 +21,8 @@ function saveSettings() {
             font_size_level: fontSizeLevel,
             theme: currentTheme
         };
-        window.ipc.postMessage('save_settings:' + JSON.stringify(settings));
+        // Include extension in message format: save_settings:ext:{json}
+        window.ipc.postMessage('save_settings:' + currentExtension + ':' + JSON.stringify(settings));
     }
 }
 
