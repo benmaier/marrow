@@ -220,11 +220,49 @@ fn create_window(
     let current_settings = all_settings.get_for_extension(&extension).clone();
     drop(all_settings);
 
-    let (content, filename) = load_file(path);
     let base_dir = path.and_then(|p| p.parent());
-    let toc = extract_toc(&content);
-    let html_content = markdown_to_html(&content, base_dir);
-    let full_html = build_full_html(&content, &html_content, &toc, &filename, &current_settings, &extension);
+    let is_notebook = extension == "ipynb";
+
+    // Load and render content based on file type
+    let (_content, filename, toc, full_html) = if is_notebook {
+        let filename = path
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("untitled")
+            .to_string();
+
+        match path.and_then(|p| std::fs::read_to_string(p).ok()) {
+            Some(json_content) => {
+                match serde_json::from_str::<Notebook>(&json_content) {
+                    Ok(notebook) => {
+                        let (notebook_html, toc) = notebook_to_html(&notebook, base_dir);
+                        let html = build_full_html_notebook(&notebook_html, &toc, &current_settings, &extension);
+                        (json_content, filename, toc, html)
+                    }
+                    Err(e) => {
+                        let error_md = format!("# Error\n\nCould not parse notebook: {}", e);
+                        let toc = extract_toc(&error_md);
+                        let rendered = markdown_to_html(&error_md, base_dir);
+                        let html = build_full_html_markdown(&error_md, &rendered, &toc, &current_settings, &extension);
+                        (error_md, "Error".to_string(), toc, html)
+                    }
+                }
+            }
+            None => {
+                let error_md = "# Error\n\nCould not load file".to_string();
+                let toc = extract_toc(&error_md);
+                let rendered = markdown_to_html(&error_md, base_dir);
+                let html = build_full_html_markdown(&error_md, &rendered, &toc, &current_settings, &extension);
+                (error_md, "Error".to_string(), toc, html)
+            }
+        }
+    } else {
+        let (content, filename) = load_file(path);
+        let toc = extract_toc(&content);
+        let html_content = markdown_to_html(&content, base_dir);
+        let full_html = build_full_html_markdown(&content, &html_content, &toc, &current_settings, &extension);
+        (content, filename, toc, full_html)
+    };
 
     // Build window title: "First Heading · filename · Marrow 🦴"
     let first_heading = toc.first().map(|(_, text)| truncate_end(text, 20));
@@ -511,6 +549,197 @@ fn strip_ansi_codes(s: &str) -> String {
         }
     }
     result
+}
+
+/// Convert notebook to native HTML rendering
+fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> (String, Vec<(usize, String)>) {
+    let mut html = String::from("<div class=\"notebook\">\n");
+    let mut toc: Vec<(usize, String)> = Vec::new();
+
+    for (cell_idx, cell) in notebook.cells.iter().enumerate() {
+        match cell.cell_type.as_str() {
+            "markdown" => {
+                let md_source = cell.source.to_string();
+                // Extract headings for TOC
+                extract_headings_from_markdown(&md_source, &mut toc);
+                // Render markdown using existing function
+                let rendered = markdown_to_html(&md_source, base_dir);
+                html.push_str(&format!(
+                    "<div class=\"nb-cell nb-markdown-cell\" data-cell-idx=\"{}\">\n{}\n</div>\n",
+                    cell_idx, rendered
+                ));
+            }
+            "code" => {
+                let exec_count = cell.execution_count.map(|n| n.to_string()).unwrap_or_else(|| " ".to_string());
+                let source = html_escape(&cell.source.to_string());
+
+                html.push_str(&format!(
+                    r#"<div class="nb-cell nb-code-cell" data-cell-idx="{}">
+    <div class="nb-cell-header">
+        <span class="nb-prompt nb-in">In [{}]:</span>
+        <button class="nb-collapse-btn">▼</button>
+    </div>
+    <div class="nb-input">
+        <pre><code class="language-python">{}</code></pre>
+    </div>
+"#,
+                    cell_idx, exec_count, source
+                ));
+
+                // Render outputs
+                if !cell.outputs.is_empty() {
+                    html.push_str("    <div class=\"nb-outputs\">\n");
+                    for output in &cell.outputs {
+                        render_output(&mut html, output, &exec_count);
+                    }
+                    html.push_str("    </div>\n");
+                }
+
+                html.push_str("</div>\n");
+            }
+            "raw" => {
+                let source = html_escape(&cell.source.to_string());
+                html.push_str(&format!(
+                    r#"<div class="nb-cell nb-raw-cell" data-cell-idx="{}">
+    <div class="nb-raw-content">{}</div>
+</div>
+"#,
+                    cell_idx, source
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    html.push_str("</div>\n");
+    // Add figure overlay div for expanded images
+    html.push_str(r#"<div id="nb-figure-overlay" class="nb-figure-overlay" onclick="closeFigureOverlay()"><img src="" alt="expanded figure"></div>"#);
+
+    (html, toc)
+}
+
+fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
+    match output.output_type.as_str() {
+        "stream" => {
+            if let Some(text) = &output.text {
+                let escaped = html_escape(&text.to_string());
+                html.push_str(&format!(
+                    r#"        <div class="nb-output nb-output-stream">
+            <div class="nb-output-content">{}</div>
+        </div>
+"#,
+                    escaped
+                ));
+            }
+        }
+        "execute_result" | "display_data" => {
+            if let Some(data) = &output.data {
+                // Check for images first (prioritize visual output)
+                if let Some(img) = data.get("image/png") {
+                    let b64 = img.to_string().replace('\n', "");
+                    html.push_str(&format!(
+                        r#"        <div class="nb-output nb-output-image">
+            <img src="data:image/png;base64,{}" class="nb-figure" onclick="expandFigure(this)" alt="output">
+        </div>
+"#,
+                        b64
+                    ));
+                } else if let Some(img) = data.get("image/jpeg") {
+                    let b64 = img.to_string().replace('\n', "");
+                    html.push_str(&format!(
+                        r#"        <div class="nb-output nb-output-image">
+            <img src="data:image/jpeg;base64,{}" class="nb-figure" onclick="expandFigure(this)" alt="output">
+        </div>
+"#,
+                        b64
+                    ));
+                } else if let Some(text) = data.get("text/plain") {
+                    let escaped = html_escape(&text.to_string());
+                    // Only show Out[n] for execute_result, not display_data
+                    let prompt = if output.output_type == "execute_result" {
+                        format!(r#"<div class="nb-output-header"><span class="nb-prompt nb-out">Out[{}]:</span></div>"#, exec_count)
+                    } else {
+                        String::new()
+                    };
+                    html.push_str(&format!(
+                        r#"        <div class="nb-output nb-output-text">
+            {}
+            <div class="nb-output-content">{}</div>
+        </div>
+"#,
+                        prompt, escaped
+                    ));
+                }
+            }
+        }
+        "error" => {
+            let mut error_text = String::new();
+            if let Some(ename) = &output.ename {
+                error_text.push_str(ename);
+                if let Some(evalue) = &output.evalue {
+                    error_text.push_str(": ");
+                    error_text.push_str(evalue);
+                }
+                error_text.push('\n');
+            }
+            if let Some(tb) = &output.traceback {
+                for line in tb {
+                    let clean = strip_ansi_codes(line);
+                    error_text.push_str(&clean);
+                    error_text.push('\n');
+                }
+            }
+            let escaped = html_escape(&error_text);
+            html.push_str(&format!(
+                r#"        <div class="nb-output nb-output-error">
+            <div class="nb-output-content">{}</div>
+        </div>
+"#,
+                escaped
+            ));
+        }
+        _ => {}
+    }
+}
+
+fn extract_headings_from_markdown(markdown: &str, toc: &mut Vec<(usize, String)>) {
+    let options = Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TABLES
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_TASKLISTS;
+
+    let parser = Parser::new_ext(markdown, options);
+    let mut in_heading = false;
+    let mut current_level = 0;
+    let mut current_text = String::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::Heading { level, .. }) => {
+                in_heading = true;
+                current_level = match level {
+                    HeadingLevel::H1 => 1,
+                    HeadingLevel::H2 => 2,
+                    HeadingLevel::H3 => 3,
+                    HeadingLevel::H4 => 4,
+                    HeadingLevel::H5 => 5,
+                    HeadingLevel::H6 => 6,
+                };
+                current_text.clear();
+            }
+            Event::End(TagEnd::Heading(_)) if in_heading => {
+                in_heading = false;
+                toc.push((current_level, current_text.clone()));
+            }
+            Event::Text(text) if in_heading => {
+                current_text.push_str(&text);
+            }
+            Event::Code(code) if in_heading => {
+                current_text.push_str(&code);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn load_file(path: Option<&PathBuf>) -> (String, String) {
@@ -1017,16 +1246,16 @@ const KATEX_JS: &str = include_str!("../vendor/katex.min.js");
 const KATEX_CSS: &str = include_str!("../vendor/katex-embedded.min.css");
 const KATEX_AUTO: &str = include_str!("../vendor/auto-render.min.js");
 
-fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], _filename: &str, settings: &Settings, extension: &str) -> String {
-    // Include extension in settings for JS
+fn build_settings_json(settings: &Settings, extension: &str) -> String {
     let mut settings_with_ext = serde_json::to_value(settings).unwrap_or(serde_json::json!({}));
     if let Some(obj) = settings_with_ext.as_object_mut() {
         obj.insert("extension".to_string(), serde_json::json!(extension));
     }
-    let settings_json = serde_json::to_string(&settings_with_ext).unwrap_or_else(|_| "{}".to_string());
+    serde_json::to_string(&settings_with_ext).unwrap_or_else(|_| "{}".to_string())
+}
 
-    let toc_html: String = toc
-        .iter()
+fn build_toc_html(toc: &[(usize, String)]) -> String {
+    toc.iter()
         .map(|(level, text)| {
             let slug = slugify(text);
             format!(
@@ -1034,8 +1263,12 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
                 slug, level, html_escape(text)
             )
         })
-        .collect();
+        .collect()
+}
 
+fn build_full_html_markdown(content: &str, rendered_html: &str, toc: &[(usize, String)], settings: &Settings, extension: &str) -> String {
+    let settings_json = build_settings_json(settings, extension);
+    let toc_html = build_toc_html(toc);
     let raw_markdown_escaped = html_escape(content);
 
     // Create JSON array of markdown lines for copy handler
@@ -1060,8 +1293,33 @@ fn build_full_html(content: &str, rendered_html: &str, toc: &[(usize, String)], 
         .replace("{css}", CSS)
         .replace("{github_view}", rendered_html)
         .replace("{terminal_view}", &raw_markdown_escaped)
+        .replace("{notebook_view}", "")
+        .replace("{md_display}", "block")
+        .replace("{nb_display}", "none")
         .replace("{toc}", &toc_html)
         .replace("{markdown_lines}", &markdown_lines_json)
+        .replace("{settings}", &settings_json)
+        .replace("{js}", JS)
+}
+
+fn build_full_html_notebook(notebook_html: &str, toc: &[(usize, String)], settings: &Settings, extension: &str) -> String {
+    let settings_json = build_settings_json(settings, extension);
+    let toc_html = build_toc_html(toc);
+
+    HTML_TEMPLATE
+        .replace("{hljs_css}", HLJS_CSS)
+        .replace("{hljs_js}", HLJS_JS)
+        .replace("{katex_css}", KATEX_CSS)
+        .replace("{katex_js}", KATEX_JS)
+        .replace("{katex_auto}", KATEX_AUTO)
+        .replace("{css}", CSS)
+        .replace("{github_view}", "")
+        .replace("{terminal_view}", "")
+        .replace("{notebook_view}", notebook_html)
+        .replace("{md_display}", "none")
+        .replace("{nb_display}", "block")
+        .replace("{toc}", &toc_html)
+        .replace("{markdown_lines}", "")
         .replace("{settings}", &settings_json)
         .replace("{js}", JS)
 }

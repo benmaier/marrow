@@ -4,6 +4,7 @@ let tocVisible = initialSettings.toc_visible || false;
 let fontSizeLevel = initialSettings.font_size_level || 0;
 let currentTheme = initialSettings.theme || 'dark';
 const currentExtension = initialSettings.extension || 'md';
+const isNotebook = currentExtension === 'ipynb';
 const TOC_WIDTH = 200;
 const BASE_FONT_SIZE = 15;
 const TERMINAL_BASE_SIZE = 11;
@@ -41,7 +42,10 @@ function resetFontSize() {
 function applyFontSize() {
     const scale = 1 + (fontSizeLevel * 0.1);  // Each level is 10%
     document.body.style.fontSize = (BASE_FONT_SIZE * scale) + 'px';
-    document.getElementById('terminal-view').style.fontSize = (TERMINAL_BASE_SIZE * scale) + 'px';
+    const terminalView = document.getElementById('terminal-view');
+    if (terminalView) {
+        terminalView.style.fontSize = (TERMINAL_BASE_SIZE * scale) + 'px';
+    }
 }
 
 function setTheme(theme) {
@@ -54,9 +58,16 @@ function toggleTheme() {
     setTheme(currentTheme === 'dark' ? 'light' : 'dark');
 }
 
+function getActiveViewSelector() {
+    if (isNotebook) {
+        return '#notebook-view';
+    }
+    return currentMode === 'github' ? '#github-view' : '#terminal-view';
+}
+
 function getCurrentHeadingId() {
     const content = document.getElementById('content');
-    const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
+    const activeView = getActiveViewSelector();
     const headings = document.querySelectorAll(activeView + ' h1, ' + activeView + ' h2, ' + activeView + ' h3, ' + activeView + ' h4, ' + activeView + ' h5, ' + activeView + ' h6, ' + activeView + ' [id].md-heading');
 
     let currentHeading = null;
@@ -118,7 +129,7 @@ function toggleToc() {
 
 function scrollToHeading(slug) {
     // Find element in the currently active view
-    const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
+    const activeView = getActiveViewSelector();
     const el = document.querySelector(activeView + ' #' + CSS.escape(slug));
     if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -328,11 +339,18 @@ document.addEventListener('keydown', function(e) {
     // Ignore other shortcuts if typing in input
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
-    // Tab to toggle view (before modifier check)
-    if (e.key === 'Tab') {
+    // Tab to toggle view (markdown only, before modifier check)
+    if (e.key === 'Tab' && !isNotebook) {
         e.preventDefault();
         const headingId = getCurrentHeadingId();
         setMode(currentMode === 'github' ? 'terminal' : 'github', headingId);
+        return;
+    }
+
+    // K to toggle collapse all cells (notebook only)
+    if (e.key === 'k' && isNotebook) {
+        e.preventDefault();
+        toggleAllCells();
         return;
     }
 
@@ -383,7 +401,7 @@ function performSearch(query) {
         return;
     }
 
-    const activeView = currentMode === 'github' ? document.getElementById('github-view') : document.getElementById('terminal-view');
+    const activeView = document.querySelector(getActiveViewSelector());
     const walker = document.createTreeWalker(activeView, NodeFilter.SHOW_TEXT, null, false);
     const textNodes = [];
 
@@ -465,6 +483,76 @@ document.getElementById('search-input').addEventListener('keydown', function(e) 
         e.shiftKey ? searchPrev() : searchNext();
     }
 });
+
+// Notebook-specific functions
+let cellsCollapsed = false; // Global collapsed state
+
+function checkAndSyncGlobalCollapseState() {
+    // Check if all cells are in the same state, and if so, sync the global state
+    const cells = document.querySelectorAll('.nb-cell');
+    if (cells.length === 0) return;
+
+    const allCollapsed = Array.from(cells).every(c => c.classList.contains('collapsed'));
+    const allExpanded = Array.from(cells).every(c => !c.classList.contains('collapsed'));
+
+    if (allCollapsed) {
+        cellsCollapsed = true;
+    } else if (allExpanded) {
+        cellsCollapsed = false;
+    }
+    // If mixed state, don't change the global state
+}
+
+function toggleCellCollapse(cellEl) {
+    const scrollY = window.scrollY;
+    cellEl.classList.toggle('collapsed');
+    window.scrollTo(0, scrollY); // Preserve scroll position
+
+    // Check if all cells now match, and sync global state
+    checkAndSyncGlobalCollapseState();
+}
+
+function toggleAllCells() {
+    const scrollY = window.scrollY;
+    const cells = document.querySelectorAll('.nb-cell');
+    if (cells.length === 0) return;
+
+    // Toggle based on tracked global state
+    cellsCollapsed = !cellsCollapsed;
+    cells.forEach(c => c.classList.toggle('collapsed', cellsCollapsed));
+    window.scrollTo(0, scrollY); // Preserve scroll position
+}
+
+function expandFigure(img) {
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'nb-figure-overlay';
+    overlay.onclick = function() { closeFigureOverlay(); };
+
+    // Clone the image
+    const expandedImg = img.cloneNode();
+    expandedImg.className = 'nb-figure-expanded';
+    overlay.appendChild(expandedImg);
+
+    document.body.appendChild(overlay);
+
+    // Close on escape key
+    document.addEventListener('keydown', handleFigureEscape);
+}
+
+function closeFigureOverlay() {
+    const overlay = document.querySelector('.nb-figure-overlay');
+    if (overlay) {
+        overlay.remove();
+        document.removeEventListener('keydown', handleFigureEscape);
+    }
+}
+
+function handleFigureEscape(e) {
+    if (e.key === 'Escape') {
+        closeFigureOverlay();
+    }
+}
 
 function initCodeBlocks() {
     // GitHub view: add language labels to code blocks
@@ -718,7 +806,7 @@ function slugify(text) {
 // TOC scroll tracking
 function updateTocHighlight() {
     const content = document.getElementById('content');
-    const activeView = currentMode === 'github' ? '#github-view' : '#terminal-view';
+    const activeView = getActiveViewSelector();
     const headings = document.querySelectorAll(activeView + ' h1, ' + activeView + ' h2, ' + activeView + ' h3, ' + activeView + ' h4, ' + activeView + ' h5, ' + activeView + ' h6, ' + activeView + ' [id].md-heading');
 
     let currentHeading = null;
@@ -752,17 +840,22 @@ window.addEventListener('resize', function() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    initCodeBlocks();
+    if (isNotebook) {
+        // Notebook mode initialization
+        initNotebook();
+    } else {
+        // Markdown mode initialization
+        initCodeBlocks();
+
+        // Set view mode
+        const content = document.getElementById('content');
+        content.className = 'content ' + currentMode;
+        document.getElementById('github-view').style.display = currentMode === 'github' ? 'block' : 'none';
+        document.getElementById('terminal-view').style.display = currentMode === 'terminal' ? 'block' : 'none';
+    }
 
     // Add scroll listener for TOC highlighting
     document.getElementById('content').addEventListener('scroll', updateTocHighlight);
-
-    // Apply settings from initialSettings (already set at top of script)
-    // Set view mode
-    const content = document.getElementById('content');
-    content.className = 'content ' + currentMode;
-    document.getElementById('github-view').style.display = currentMode === 'github' ? 'block' : 'none';
-    document.getElementById('terminal-view').style.display = currentMode === 'terminal' ? 'block' : 'none';
 
     // Show TOC if enabled
     if (tocVisible) {
@@ -780,3 +873,35 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initial highlight
     updateTocHighlight();
 });
+
+function initNotebook() {
+    const notebookView = document.getElementById('notebook-view');
+    if (!notebookView) return;
+
+    // Apply syntax highlighting to notebook code cells
+    notebookView.querySelectorAll('pre code').forEach((codeBlock) => {
+        if (typeof hljs !== 'undefined') {
+            hljs.highlightElement(codeBlock);
+        }
+    });
+
+    // Wire up collapse buttons
+    const buttons = notebookView.querySelectorAll('.nb-collapse-btn');
+    buttons.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const cell = this.closest('.nb-cell');
+            if (cell) {
+                toggleCellCollapse(cell);
+            }
+        });
+    });
+
+    // Wire up figure expansion
+    notebookView.querySelectorAll('.nb-figure').forEach(img => {
+        img.addEventListener('click', function() {
+            expandFigure(this);
+        });
+    });
+}

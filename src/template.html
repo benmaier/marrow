@@ -17,20 +17,30 @@
                 <button onclick="closeSearch()">✕</button>
             </div>
             <main class="content github" id="content">
-                <div id="github-view" class="view-content">{github_view}</div>
-                <div id="terminal-view" class="view-content" style="display:none;">{terminal_view}</div>
+                <!-- Markdown mode views -->
+                <div id="markdown-views" style="display:{md_display}">
+                    <div id="github-view" class="view-content">{github_view}</div>
+                    <div id="terminal-view" class="view-content" style="display:none;">{terminal_view}</div>
+                </div>
+                <!-- Notebook mode view -->
+                <div id="notebook-view" class="view-content" style="display:{nb_display}">{notebook_view}</div>
             </main>
         </div>
         <nav class="toc hidden" id="toc">
             {toc}
         </nav>
     </div>
-    <div class="hotkey-bar">
+    <div class="hotkey-bar" id="hotkey-bar-md" style="display:{md_display}">
         <span><kbd>Tab</kbd> Toggle View</span>
         <span><kbd>C</kbd> Contents</span>
         <span><kbd>L</kbd> Light/Dark</span>
         <span><kbd>⌘C</kbd> Copy MD</span>
         <span><kbd>⇧⌘C</kbd> Copy Formatted</span>
+    </div>
+    <div class="hotkey-bar" id="hotkey-bar-nb" style="display:{nb_display}">
+        <span><kbd>K</kbd> Collapse All</span>
+        <span><kbd>C</kbd> Contents</span>
+        <span><kbd>L</kbd> Light/Dark</span>
     </div>
     <script>{hljs_js}</script>
     <script>{katex_js}</script>
@@ -39,13 +49,28 @@
     <script>const initialSettings = {settings};</script>
     <script>{js}</script>
     <script>
-        renderMathInElement(document.getElementById('github-view'), {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false}
-            ],
-            throwOnError: false
-        });
+        // Render math in github-view (for markdown files)
+        const githubView = document.getElementById('github-view');
+        if (githubView) {
+            renderMathInElement(githubView, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+        }
+        // Render math in notebook markdown cells
+        const notebookView = document.getElementById('notebook-view');
+        if (notebookView) {
+            renderMathInElement(notebookView, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+        }
     </script>
 </body>
 </html>

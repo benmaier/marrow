@@ -403,3 +403,208 @@ body.light .hljs-deletion { color: #cf222e; }
 body.light .hljs-formula { background: #f6f8fa; }
 body.light .hljs-emphasis { font-style: italic; }
 body.light .hljs-strong { font-weight: bold; }
+
+/* ============================================
+   Notebook Styles
+   ============================================ */
+
+.notebook {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+/* Cell base */
+.nb-cell {
+    margin-bottom: 24px;
+    border-left: 3px solid var(--border-color);
+    padding-left: 12px;
+}
+
+.nb-markdown-cell {
+    border-left-color: transparent;
+    padding-left: 0;
+}
+
+/* Cell header with prompt and collapse button */
+.nb-cell-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+/* Prompts: In[n]: and Out[n]: */
+.nb-prompt {
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    color: var(--text-muted);
+    min-width: 60px;
+}
+
+.nb-in {
+    color: var(--accent-color);
+}
+
+.nb-out {
+    color: #e06c75;
+}
+
+body.light .nb-out {
+    color: #cf222e;
+}
+
+/* Collapse button */
+.nb-collapse-btn {
+    font-size: 10px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background 0.15s;
+}
+
+.nb-collapse-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+/* Collapsed state - only collapse input, not outputs */
+.nb-cell.collapsed .nb-input {
+    max-height: 60px;
+    overflow: hidden;
+    position: relative;
+}
+
+.nb-cell.collapsed .nb-input::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: linear-gradient(transparent, var(--bg-primary));
+    pointer-events: none;
+}
+
+.nb-cell.collapsed .nb-collapse-btn {
+    transform: rotate(-90deg);
+}
+
+/* Code input */
+.nb-input {
+    margin-bottom: 8px;
+}
+
+.nb-input pre {
+    margin: 0;
+    padding: 12px;
+    background: var(--code-bg);
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.nb-input code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+/* Outputs container */
+.nb-outputs {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Output block */
+.nb-output {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.nb-output-header {
+    display: flex;
+    align-items: center;
+}
+
+/* Text/stream output */
+.nb-output-content {
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    background: var(--bg-tertiary);
+    padding: 10px 12px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* Error output */
+.nb-output-error .nb-output-content {
+    background: rgba(224, 108, 117, 0.1);
+    border-left: 3px solid #e06c75;
+}
+
+body.light .nb-output-error .nb-output-content {
+    background: rgba(207, 34, 46, 0.08);
+    border-left-color: #cf222e;
+}
+
+/* Figure/image output */
+.nb-output-image {
+    position: relative;
+    text-align: center;
+}
+
+.nb-figure {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.nb-figure:hover {
+    opacity: 0.95;
+}
+
+/* Expanded figure overlay */
+.nb-figure-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+}
+
+.nb-figure-overlay.visible {
+    display: flex;
+}
+
+.nb-figure-overlay img {
+    max-width: 95vw;
+    max-height: 95vh;
+    object-fit: contain;
+    border-radius: 4px;
+}
+
+/* Raw cells */
+.nb-raw-cell .nb-raw-content {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    background: var(--bg-tertiary);
+    padding: 10px 12px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+}
