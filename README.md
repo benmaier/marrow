@@ -1,14 +1,15 @@
 # Marrow
 
-A fast, native macOS markdown viewer with dual rendering modes, smart copy, and a distraction-free reading experience.
+A fast, native macOS viewer for Markdown and Jupyter notebooks with dual rendering modes, smart copy, and a distraction-free reading experience.
 
 ## Why Marrow?
 
-There are plenty of markdown *editors*. But what if you just want to *read* markdown?
+There are plenty of markdown *editors*. But what if you just want to *read* markdown or notebooks?
 
 Marrow is a viewer, not an editor. No syntax panes, no live preview splits, no project management. Just:
 
 - **Render markdown** with GitHub-style dark theme
+- **View Jupyter notebooks** with native rendering and collapsible cells
 - **Copy as markdown** when you select and copy
 - **Navigate with a TOC** generated from headings
 
@@ -65,9 +66,33 @@ Press `Cmd+F` to search within the document:
 
 - **Font Size Control**: `Cmd+Plus` / `Cmd+Minus` / `Cmd+0` to zoom
 - **Multi-Window**: Open multiple documents, each in its own window
-- **File Associations**: Set Marrow as your default `.md` viewer
-- **Persistent Preferences**: View mode, TOC state, and font size remembered across sessions
+- **File Associations**: Set Marrow as your default `.md` or `.ipynb` viewer
+- **Persistent Preferences**: View mode, TOC state, and font size remembered per file type
 - **Smart Window Titles**: Shows first heading + filename
+
+### Jupyter Notebook Support
+
+Marrow renders `.ipynb` files natively—no markdown conversion, no external dependencies.
+
+**Native Rendering**
+- Code cells with syntax highlighting and `In[n]:` prompts
+- Markdown cells rendered as GitHub-style HTML
+- Output cells including text, images, and HTML
+- Error tracebacks with ANSI color support
+
+**Collapsible Cells**
+- Press `C` to collapse/expand all code cells
+- Click the `▼` button to toggle individual cells
+- Only code input collapses—outputs stay visible
+
+**Rich Output**
+- Images displayed inline (click to expand)
+- HTML output preserved with inline styles
+- KaTeX math rendering in markdown cells (not in code outputs)
+
+**Per-Extension Settings**
+- Separate preferences for `.md` and `.ipynb` files
+- Each file type remembers its own theme, window size, and TOC state
 
 ## Keyboard Shortcuts
 
@@ -123,23 +148,23 @@ This creates `Marrow.app` in `/Applications`.
 ### From Command Line
 
 ```bash
-# Open a file
-marrow path/to/file.md
-
-# Or use the app bundle
+# Open markdown
 open -a Marrow path/to/file.md
+
+# Open notebook
+open -a Marrow path/to/notebook.ipynb
 ```
 
 ### From Finder
 
-Double-click any `.md` file (if Marrow is set as default), or:
+Double-click any `.md` or `.ipynb` file (if Marrow is set as default), or:
 
 1. Right-click the file
 2. Open With → Marrow
 
 ### Drag and Drop
 
-Drag markdown files onto the Marrow icon in Dock or Applications.
+Drag markdown or notebook files onto the Marrow icon in Dock or Applications.
 
 ## Supported Markdown
 
@@ -207,18 +232,29 @@ ls target/release/bundle/osx/Marrow.app
 
 ```
 src/
-└── main.rs          # Single-file implementation (~1700 lines)
-    ├── Window management (tao)
-    ├── WebView rendering (wry)
-    ├── Markdown parsing (pulldown-cmark)
-    ├── HTML generation with line tracking
-    ├── Embedded CSS (GitHub dark theme)
-    └── Embedded JavaScript
-        ├── View switching
-        ├── TOC navigation
-        ├── Search functionality
-        ├── Smart copy logic
-        └── Markdown syntax highlighting
+├── main.rs        (1400 lines) - Rust core
+│   ├── Window management (tao/wry)
+│   ├── Markdown parsing (pulldown-cmark)
+│   ├── Notebook parsing & native HTML rendering
+│   ├── ANSI-to-HTML conversion for error tracebacks
+│   ├── Per-extension settings persistence
+│   └── IPC handlers (clipboard, resize, settings)
+│
+├── script.js      (900 lines) - UI logic
+│   ├── View switching (GitHub/Terminal)
+│   ├── Notebook cell collapse/expand
+│   ├── TOC navigation & scroll tracking
+│   ├── Search with highlighting
+│   ├── Smart copy (markdown extraction)
+│   └── Figure expand overlay
+│
+├── style.css      (600 lines) - Styling
+│   ├── Light/dark themes (CSS variables)
+│   ├── GitHub markdown styles
+│   ├── Notebook cell styles (.nb-*)
+│   └── Hotkey bar, TOC, search bar
+│
+└── template.html  (75 lines) - HTML shell
 ```
 
 ### How Smart Copy Works
