@@ -1,3 +1,7 @@
+/* ===========================================================================
+   BASE & THEME VARIABLES
+   =========================================================================== */
+
 * {
     margin: 0;
     padding: 0;
@@ -36,6 +40,10 @@ body {
     overflow: hidden;
     font-size: 15px;
 }
+
+/* ===========================================================================
+   LAYOUT: CONTAINER, TOC, HOTKEY BAR
+   =========================================================================== */
 
 .container {
     display: flex;
@@ -202,7 +210,10 @@ mark.search-highlight.current {
     padding: 32px 48px;
 }
 
-/* GitHub Mode Styles */
+/* ===========================================================================
+   GITHUB MODE (Rendered Markdown)
+   =========================================================================== */
+
 .github h1, .github h2, .github h3, .github h4, .github h5, .github h6 {
     margin-top: 24px;
     margin-bottom: 16px;
@@ -293,13 +304,28 @@ mark.search-highlight.current {
 .github strong { font-weight: 600; color: var(--text-primary); }
 .github em { font-style: italic; }
 
+.github img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.github img:hover {
+    opacity: 0.95;
+}
+
 .github .math-block {
     text-align: center;
     margin: 16px 0;
     overflow-x: auto;
 }
 
-/* Terminal Mode Styles - Raw markdown with syntax highlighting */
+/* ===========================================================================
+   TERMINAL MODE (Raw Markdown)
+   =========================================================================== */
+
 #terminal-view {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     font-size: 11px;
@@ -412,9 +438,9 @@ body.light .hljs-formula { background: #f6f8fa; }
 body.light .hljs-emphasis { font-style: italic; }
 body.light .hljs-strong { font-weight: bold; }
 
-/* ============================================
-   Notebook Styles
-   ============================================ */
+/* ===========================================================================
+   NOTEBOOK MODE
+   =========================================================================== */
 
 .notebook {
     max-width: 900px;

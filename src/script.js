@@ -1,4 +1,7 @@
-// Initialize from settings injected by Rust
+// ============================================================================
+// STATE & CONSTANTS
+// ============================================================================
+
 let currentMode = initialSettings.view_mode || 'github';
 let tocVisible = initialSettings.toc_visible || false;
 let fontSizeLevel = initialSettings.font_size_level || 0;
@@ -8,6 +11,10 @@ const isNotebook = currentExtension === 'ipynb';
 const TOC_WIDTH = 200;
 const BASE_FONT_SIZE = 15;
 const TERMINAL_BASE_SIZE = 11;
+
+// ============================================================================
+// SETTINGS & PREFERENCES
+// ============================================================================
 
 function saveSettings() {
     if (window.ipc) {
@@ -57,6 +64,10 @@ function setTheme(theme) {
 function toggleTheme() {
     setTheme(currentTheme === 'dark' ? 'light' : 'dark');
 }
+
+// ============================================================================
+// VIEW SWITCHING & NAVIGATION
+// ============================================================================
 
 function getActiveViewSelector() {
     if (isNotebook) {
@@ -136,7 +147,10 @@ function scrollToHeading(slug) {
     }
 }
 
-// Extract markdown for selection (used by Cmd+C)
+// ============================================================================
+// COPY HANDLING (Cmd+C)
+// ============================================================================
+
 function extractMarkdownForSelection() {
     const selection = window.getSelection();
     if (!selection.rangeCount || selection.isCollapsed) return null;
@@ -252,7 +266,10 @@ function extractMarkdownForSelection() {
     return null;
 }
 
-// Keyboard shortcuts
+// ============================================================================
+// KEYBOARD SHORTCUTS
+// ============================================================================
+
 document.addEventListener('keydown', function(e) {
     // Cmd+F for search
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
@@ -371,7 +388,10 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// Search functionality
+// ============================================================================
+// SEARCH
+// ============================================================================
+
 let searchMatches = [];
 let currentMatchIndex = -1;
 
@@ -489,8 +509,11 @@ document.getElementById('search-input').addEventListener('keydown', function(e) 
     }
 });
 
-// Notebook-specific functions
-let cellsCollapsed = false; // Global collapsed state
+// ============================================================================
+// NOTEBOOK: CELL COLLAPSE & IMAGE EXPAND
+// ============================================================================
+
+let cellsCollapsed = false;
 
 function checkAndSyncGlobalCollapseState() {
     // Check if all cells are in the same state, and if so, sync the global state
@@ -559,6 +582,10 @@ function handleFigureEscape(e) {
     }
 }
 
+// ============================================================================
+// MARKDOWN: CODE BLOCKS & TERMINAL VIEW
+// ============================================================================
+
 function initCodeBlocks() {
     // GitHub view: add language labels to code blocks
     document.querySelectorAll('#github-view pre code').forEach((codeBlock) => {
@@ -583,6 +610,13 @@ function initCodeBlocks() {
         if (typeof hljs !== 'undefined') {
             hljs.highlightElement(codeBlock);
         }
+    });
+
+    // GitHub view: add click-to-expand for images
+    document.querySelectorAll('#github-view img').forEach(img => {
+        img.addEventListener('click', function() {
+            expandFigure(this);
+        });
     });
 
     // Terminal view: custom markdown syntax highlighting
@@ -808,7 +842,10 @@ function slugify(text) {
         .join('-');
 }
 
-// TOC scroll tracking
+// ============================================================================
+// TOC & INITIALIZATION
+// ============================================================================
+
 function updateTocHighlight() {
     const content = document.getElementById('content');
     const activeView = getActiveViewSelector();

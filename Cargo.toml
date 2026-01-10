@@ -19,7 +19,7 @@ urlencoding = "2"
 [package.metadata.bundle]
 name = "Marrow"
 identifier = "com.marrow.app"
-icon = ["icon.icns"]
+icon = ["icon/icon.icns"]
 category = "public.app-category.developer-tools"
 
 [profile.release]

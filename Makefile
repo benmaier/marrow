@@ -27,8 +27,6 @@ icon:
 
 bundle: icon
 	cargo bundle --release
-	@# Copy generated icon to app bundle
-	@cp icon/icon.icns $(APP_PATH)/Contents/Resources/icon.icns
 	@# Add document type associations for markdown and notebook files
 	@plutil -insert CFBundleDocumentTypes -json '[ \
 		{ \

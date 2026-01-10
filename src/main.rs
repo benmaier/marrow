@@ -1,3 +1,7 @@
+// ============================================================================
+// IMPORTS & TYPES
+// ============================================================================
+
 use pulldown_cmark::{Options, Parser, HeadingLevel, Event, Tag, TagEnd, CodeBlockKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -117,6 +121,10 @@ struct CellOutput {
     traceback: Option<Vec<String>>,
 }
 
+// ============================================================================
+// SETTINGS PERSISTENCE
+// ============================================================================
+
 fn get_settings_path() -> Option<PathBuf> {
     directories::ProjectDirs::from("com", "marrow", "app")
         .map(|dirs| dirs.config_dir().join("settings.json"))
@@ -139,6 +147,10 @@ fn save_settings(settings: &AllSettings) {
         }
     }
 }
+
+// ============================================================================
+// WINDOW MANAGEMENT
+// ============================================================================
 
 struct AppWindow {
     window: Arc<Window>,
@@ -438,6 +450,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 }
+
+// ============================================================================
+// NOTEBOOK RENDERING
+// ============================================================================
 
 fn notebook_to_markdown(notebook: &Notebook) -> String {
     let mut md = String::new();
@@ -836,6 +852,10 @@ fn extract_headings_from_markdown(markdown: &str, toc: &mut Vec<(usize, String)>
         }
     }
 }
+
+// ============================================================================
+// MARKDOWN RENDERING
+// ============================================================================
 
 fn load_file(path: Option<&PathBuf>) -> (String, String) {
     if let Some(path) = path {
@@ -1331,6 +1351,10 @@ fn slugify(text: &str) -> String {
         .collect::<Vec<_>>()
         .join("-")
 }
+
+// ============================================================================
+// HTML TEMPLATE BUILDING
+// ============================================================================
 
 const CSS: &str = include_str!("style.css");
 const JS: &str = include_str!("script.js");
