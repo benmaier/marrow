@@ -67,9 +67,17 @@ body {
     align-items: center;
     justify-content: flex-start;
     padding: 7px 16px 9px;
-    gap: 20px;
+    gap: 48px;
     font-size: 11px;
     color: var(--text-muted);
+}
+
+.hotkey-bar span {
+    margin-right: 12px;
+}
+
+.hotkey-bar span:last-child {
+    margin-right: 0;
 }
 
 .hotkey-bar kbd {
@@ -79,7 +87,7 @@ body {
     padding: 2px 6px;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     font-size: 10px;
-    margin-right: 5px;
+    margin-right: 3px;
 }
 
 .content-wrapper {

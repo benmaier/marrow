@@ -52,11 +52,12 @@ Structure:
 Fields per extension: `window_width`, `window_height`, `toc_visible`, `view_mode`, `font_size_level`, `theme`
 
 ## Keyboard Shortcuts
-- `Tab` - Toggle GitHub/Terminal view
-- `C` - Toggle Table of Contents
-- `L` - Toggle Light/Dark theme
+- `Tab` - Toggle GitHub/Terminal view (markdown only)
+- `T` - Toggle Table of Contents
+- `D` - Toggle Light/Dark theme
+- `C` - Collapse/expand all cells (notebook only)
 - `Cmd+F` - Search
-- `Cmd+C` - Copy as markdown (GitHub) / plain text (Terminal)
+- `Cmd+C` - Copy as markdown (GitHub view) / formatted (notebook)
 - `Shift+Cmd+C` - Copy formatted HTML
 - `Cmd+Plus/Minus/0` - Adjust/reset font size
 - `Cmd+W` - Close window

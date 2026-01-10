@@ -352,8 +352,8 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // K to toggle collapse all cells (notebook only)
-    if (e.key === 'k' && isNotebook) {
+    // C to toggle collapse all cells (notebook only)
+    if (e.key === 'c' && isNotebook) {
         e.preventDefault();
         toggleAllCells();
         return;
@@ -362,10 +362,10 @@ document.addEventListener('keydown', function(e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch(e.key.toLowerCase()) {
-        case 'c':
+        case 't':
             toggleToc();
             break;
-        case 'l':
+        case 'd':
             toggleTheme();
             break;
     }

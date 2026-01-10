@@ -47,7 +47,7 @@ Marrow's copy behavior is context-aware:
 
 Auto-generated navigation panel from document headings:
 
-- Press `C` to toggle the TOC sidebar
+- Press `T` to toggle the TOC sidebar
 - Click any heading to jump to it
 - Current section highlights as you scroll
 - Hierarchical indentation (H1 → H6)
@@ -73,13 +73,15 @@ Press `Cmd+F` to search within the document:
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle GitHub/Terminal view |
-| `C` | Toggle Table of Contents |
+| `Tab` | Toggle GitHub/Terminal view (markdown only) |
+| `T` | Toggle Table of Contents |
+| `D` | Toggle Dark/Light theme |
+| `C` | Collapse/expand all cells (notebook only) |
 | `Cmd+F` | Open search |
 | `Enter` | Next search match |
 | `Shift+Enter` | Previous search match |
 | `Esc` | Close search |
-| `Cmd+C` | Copy (markdown source in GitHub mode) |
+| `Cmd+C` | Copy (markdown source in GitHub mode, formatted in notebook) |
 | `Shift+Cmd+C` | Copy formatted HTML |
 | `Cmd+A` | Select all content |
 | `Cmd+Plus` | Increase font size |
