@@ -206,10 +206,11 @@ def hello():
 ### Make Targets
 
 ```bash
-make build      # Build release binary
-make bundle     # Create Marrow.app bundle
-make install    # Bundle and copy to /Applications
-make clean      # Remove build artifacts
+make build          # Build release binary
+make bundle         # Create Marrow.app bundle
+make install        # Bundle and copy to /Applications
+make clean          # Remove build artifacts
+make update-vendor  # Update vendored JS dependencies
 ```
 
 ### Manual Build
@@ -286,22 +287,22 @@ Marrow works fully offline. JavaScript dependencies are vendored in the `vendor/
 
 **Why vendoring instead of npm?**
 
-With only one JS dependency, the overhead of npm tooling isn't justified. Instead:
+With only a few JS dependencies, the overhead of npm tooling isn't justified. Instead:
 
 - `vendor/manifest.json` tracks versions and SHA256 checksums
-- `scripts/update-vendor.sh` downloads and verifies dependencies
+- `vendor/update-vendor.sh` downloads and verifies dependencies
 - Files are embedded at compile time via `include_str!()`
 
-This approach provides version tracking and checksum verification without requiring Node.js to build. If more dependencies are added in the future, migrating to npm may make sense.
+This approach provides version tracking and checksum verification without requiring Node.js to build.
 
 **Updating dependencies:**
 
 ```bash
 # Edit version in vendor/manifest.json, then:
-./scripts/update-vendor.sh
+make update-vendor
 
-# Verify checksums match:
-./scripts/update-vendor.sh --verify
+# Or run directly with --verify to check checksums:
+./vendor/update-vendor.sh --verify
 ```
 
 ## License

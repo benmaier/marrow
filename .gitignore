@@ -16,4 +16,16 @@
 
 # Build artifacts
 *.dSYM/
-sandbox/
+
+# Generated icon (keep only marrow5.png source)
+icon/icon.icns
+icon/icon.iconset/
+
+# Old icon versions (keep on disk, not in git)
+icon/Untitled.afdesign
+icon/icon.afdesign
+icon/marrow1.png
+icon/marrow2.afdesign
+icon/marrow2.png
+icon/marrow3.png
+icon/marrow4.png

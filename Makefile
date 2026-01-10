@@ -1,4 +1,4 @@
-.PHONY: build bundle clean install icon
+.PHONY: build bundle clean install icon update-vendor
 
 APP_PATH = target/release/bundle/osx/Marrow.app
 PLIST = $(APP_PATH)/Contents/Info.plist
@@ -64,3 +64,6 @@ install: bundle
 	@rm -rf /Applications/Marrow.app
 	@cp -r $(APP_PATH) /Applications/
 	@echo "Installed to /Applications/Marrow.app"
+
+update-vendor:
+	@./vendor/update-vendor.sh
