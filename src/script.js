@@ -531,7 +531,7 @@ function toggleAllCells() {
 function expandFigure(img) {
     // Create overlay
     const overlay = document.createElement('div');
-    overlay.className = 'nb-figure-overlay';
+    overlay.className = 'nb-figure-overlay visible';
     overlay.onclick = function() { closeFigureOverlay(); };
 
     // Clone the image

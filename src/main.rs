@@ -691,8 +691,6 @@ fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> 
     }
 
     html.push_str("</div>\n");
-    // Add figure overlay div for expanded images
-    html.push_str(r#"<div id="nb-figure-overlay" class="nb-figure-overlay" onclick="closeFigureOverlay()"><img src="" alt="expanded figure"></div>"#);
 
     (html, toc)
 }
@@ -718,7 +716,7 @@ fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
                     let b64 = img.to_string().replace('\n', "");
                     html.push_str(&format!(
                         r#"        <div class="nb-output nb-output-image">
-            <img src="data:image/png;base64,{}" class="nb-figure" onclick="expandFigure(this)" alt="output">
+            <img src="data:image/png;base64,{}" class="nb-figure" alt="output">
         </div>
 "#,
                         b64
@@ -727,7 +725,7 @@ fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
                     let b64 = img.to_string().replace('\n', "");
                     html.push_str(&format!(
                         r#"        <div class="nb-output nb-output-image">
-            <img src="data:image/jpeg;base64,{}" class="nb-figure" onclick="expandFigure(this)" alt="output">
+            <img src="data:image/jpeg;base64,{}" class="nb-figure" alt="output">
         </div>
 "#,
                         b64
