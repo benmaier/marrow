@@ -4,7 +4,13 @@
 
 A fast, native macOS viewer for Markdown with raw/formatted view modes, smart copy, and a distraction-free reading experience. Experimental Jupyter notebook view mode included.
 
-⬇️ **[Download Marrow.app.zip](https://github.com/benmaier/marrow/releases/download/v0.1.3/Marrow.app.zip)**
+⬇️ **[Download Marrow.app.zip](https://github.com/benmaier/marrow/releases/download/v0.1.3/Marrow.app.zip)** (Apple Silicon M1/M2/M3)
+
+> **Important:** The app is not code-signed. After downloading, unzip and run:
+> ```bash
+> xattr -cr /Applications/Marrow.app
+> ```
+> Otherwise macOS will claim the app is "damaged". Intel Macs need to [build from source](#build-from-source).
 
 If you find Marrow useful, consider [buying me a coffee](https://buymeacoffee.com/benmaier) ☕
 
