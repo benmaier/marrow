@@ -20,6 +20,12 @@ use wry::{WebView, WebViewBuilder};
 enum UserEvent {
     CloseWindow(WindowId),
     QuitApp,
+    RequestOutputLines {
+        window_id: WindowId,
+        cell_idx: usize,
+        output_idx: usize,
+        amount: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -121,6 +127,14 @@ struct CellOutput {
     traceback: Option<Vec<String>>,
 }
 
+// Storage for truncated output lines (for "show more" functionality)
+#[derive(Clone)]
+struct TruncatedOutput {
+    full_lines: Vec<String>,  // All lines, pre-escaped HTML
+    total_lines: usize,
+    shown_lines: usize,       // How many currently shown (100 initially)
+}
+
 // ============================================================================
 // SETTINGS PERSISTENCE
 // ============================================================================
@@ -154,8 +168,9 @@ fn save_settings(settings: &AllSettings) {
 
 struct AppWindow {
     window: Arc<Window>,
-    _webview: WebView,
+    webview: WebView,
     file_path: Option<PathBuf>,
+    truncated_outputs: HashMap<(usize, usize), TruncatedOutput>,
 }
 
 fn truncate_end(s: &str, max: usize) -> String {
@@ -236,7 +251,7 @@ fn create_window(
     let is_notebook = extension == "ipynb";
 
     // Load and render content based on file type
-    let (_content, filename, toc, full_html) = if is_notebook {
+    let (_content, filename, toc, full_html, truncated_outputs) = if is_notebook {
         let filename = path
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
@@ -247,16 +262,16 @@ fn create_window(
             Some(json_content) => {
                 match serde_json::from_str::<Notebook>(&json_content) {
                     Ok(notebook) => {
-                        let (notebook_html, toc) = notebook_to_html(&notebook, base_dir);
+                        let (notebook_html, toc, truncated) = notebook_to_html(&notebook, base_dir);
                         let html = build_full_html_notebook(&notebook_html, &toc, &current_settings, &extension);
-                        (json_content, filename, toc, html)
+                        (json_content, filename, toc, html, truncated)
                     }
                     Err(e) => {
                         let error_md = format!("# Error\n\nCould not parse notebook: {}", e);
                         let toc = extract_toc(&error_md);
                         let rendered = markdown_to_html(&error_md, base_dir);
                         let html = build_full_html_markdown(&error_md, &rendered, &toc, &current_settings, &extension);
-                        (error_md, "Error".to_string(), toc, html)
+                        (error_md, "Error".to_string(), toc, html, HashMap::new())
                     }
                 }
             }
@@ -265,7 +280,7 @@ fn create_window(
                 let toc = extract_toc(&error_md);
                 let rendered = markdown_to_html(&error_md, base_dir);
                 let html = build_full_html_markdown(&error_md, &rendered, &toc, &current_settings, &extension);
-                (error_md, "Error".to_string(), toc, html)
+                (error_md, "Error".to_string(), toc, html, HashMap::new())
             }
         }
     } else {
@@ -273,7 +288,7 @@ fn create_window(
         let toc = extract_toc(&content);
         let html_content = markdown_to_html(&content, base_dir);
         let full_html = build_full_html_markdown(&content, &html_content, &toc, &current_settings, &extension);
-        (content, filename, toc, full_html)
+        (content, filename, toc, full_html, HashMap::new())
     };
 
     // Build window title: "First Heading · filename · Marrow 🦴"
@@ -337,6 +352,20 @@ fn create_window(
                         save_settings(&all_settings);
                     }
                 }
+            } else if msg.starts_with("get_output_lines:") {
+                // Format: "get_output_lines:cell_idx:output_idx:amount"
+                let parts: Vec<&str> = msg[17..].split(':').collect();
+                if parts.len() == 3 {
+                    let cell_idx: usize = parts[0].parse().unwrap_or(0);
+                    let output_idx: usize = parts[1].parse().unwrap_or(0);
+                    let amount = parts[2].to_string();
+                    let _ = proxy_clone.send_event(UserEvent::RequestOutputLines {
+                        window_id,
+                        cell_idx,
+                        output_idx,
+                        amount,
+                    });
+                }
             } else {
                 match msg.as_str() {
                     "close_window" => {
@@ -383,7 +412,7 @@ fn create_window(
         .build(&window)?;
 
     let file_path = path.cloned();
-    Ok((window_id, AppWindow { window, _webview: webview, file_path }))
+    Ok((window_id, AppWindow { window, webview, file_path, truncated_outputs }))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -435,6 +464,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             TaoEvent::UserEvent(UserEvent::QuitApp) => {
                 *control_flow = ControlFlow::Exit;
+            }
+            TaoEvent::UserEvent(UserEvent::RequestOutputLines { window_id, cell_idx, output_idx, amount }) => {
+                if let Some(app_window) = windows.get_mut(&window_id) {
+                    if let Some(truncated) = app_window.truncated_outputs.get_mut(&(cell_idx, output_idx)) {
+                        let (lines_html, hidden_remaining, is_complete) = if amount == "all" {
+                            // Send all remaining lines (between shown and tail)
+                            let remaining: Vec<_> = truncated.full_lines[truncated.shown_lines..truncated.total_lines - 10].to_vec();
+                            let html = remaining.join("\n");
+                            (html, 0usize, true)
+                        } else {
+                            // Send next N lines
+                            let n: usize = amount.parse().unwrap_or(50);
+                            let end = (truncated.shown_lines + n).min(truncated.total_lines - 10);
+                            let lines: Vec<_> = truncated.full_lines[truncated.shown_lines..end].to_vec();
+                            let html = lines.join("\n");
+                            truncated.shown_lines = end;
+                            let hidden = truncated.total_lines - 10 - end;
+                            (html, hidden, hidden == 0)
+                        };
+
+                        // Call back to JS
+                        let js = format!(
+                            "receiveOutputLines({}, {}, {}, {}, {})",
+                            cell_idx,
+                            output_idx,
+                            serde_json::to_string(&lines_html).unwrap_or_else(|_| "\"\"".to_string()),
+                            hidden_remaining,
+                            is_complete
+                        );
+                        let _ = app_window.webview.evaluate_script(&js);
+                    }
+                }
             }
             TaoEvent::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -647,9 +708,10 @@ fn strip_pre_wrapper(html: &str) -> String {
 }
 
 /// Convert notebook to native HTML rendering
-fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> (String, Vec<(usize, String)>) {
+fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> (String, Vec<(usize, String)>, HashMap<(usize, usize), TruncatedOutput>) {
     let mut html = String::from("<div class=\"notebook\">\n");
     let mut toc: Vec<(usize, String)> = Vec::new();
+    let mut truncated_outputs: HashMap<(usize, usize), TruncatedOutput> = HashMap::new();
 
     for (cell_idx, cell) in notebook.cells.iter().enumerate() {
         match cell.cell_type.as_str() {
@@ -684,8 +746,10 @@ fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> 
                 // Render outputs
                 if !cell.outputs.is_empty() {
                     html.push_str("    <div class=\"nb-outputs\">\n");
-                    for output in &cell.outputs {
-                        render_output(&mut html, output, &exec_count);
+                    for (output_idx, output) in cell.outputs.iter().enumerate() {
+                        if let Some(truncated) = render_output(&mut html, output, &exec_count, cell_idx, output_idx) {
+                            truncated_outputs.insert((cell_idx, output_idx), truncated);
+                        }
                     }
                     html.push_str("    </div>\n");
                 }
@@ -708,21 +772,84 @@ fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> 
 
     html.push_str("</div>\n");
 
-    (html, toc)
+    (html, toc, truncated_outputs)
 }
 
-fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
+// Helper to render truncated text output with "show more" UI
+// Shows first 200 lines + last 10 lines, only if hidden > 80
+fn render_truncated_text(
+    html: &mut String,
+    lines: &[String],
+    cell_idx: usize,
+    output_idx: usize,
+    css_class: &str,
+    prompt_html: &str,
+) -> TruncatedOutput {
+    let total = lines.len();
+    let head_lines = &lines[..200];
+    let tail_lines = &lines[total - 10..];
+    let hidden = total - 210;
+
+    html.push_str(&format!(
+        r#"        <div class="{}" data-cell-idx="{}" data-output-idx="{}">
+            {}
+            <div class="nb-output-content"><div class="nb-output-head">{}</div>
+            <div class="nb-output-truncated">
+                <span class="nb-truncated-info">{} lines hidden</span>
+                <button class="nb-show-more" data-amount="50">Show 50 more</button>
+                <button class="nb-show-all">Show all</button>
+            </div>
+            <div class="nb-output-tail">{}</div></div>
+        </div>
+"#,
+        css_class,
+        cell_idx,
+        output_idx,
+        prompt_html,
+        head_lines.join("\n"),
+        hidden,
+        tail_lines.join("\n")
+    ));
+
+    TruncatedOutput {
+        full_lines: lines.to_vec(),
+        total_lines: total,
+        shown_lines: 200,
+    }
+}
+
+fn render_output(
+    html: &mut String,
+    output: &CellOutput,
+    exec_count: &str,
+    cell_idx: usize,
+    output_idx: usize,
+) -> Option<TruncatedOutput> {
     match output.output_type.as_str() {
         "stream" => {
             if let Some(text) = &output.text {
-                let escaped = html_escape(&text.to_string());
-                html.push_str(&format!(
-                    r#"        <div class="nb-output nb-output-stream">
+                let text_str = text.to_string();
+                let lines: Vec<String> = text_str.lines().map(|l| html_escape(l)).collect();
+
+                if lines.len() > 290 {
+                    return Some(render_truncated_text(
+                        html,
+                        &lines,
+                        cell_idx,
+                        output_idx,
+                        "nb-output nb-output-stream",
+                        "",
+                    ));
+                } else {
+                    let escaped = html_escape(&text_str);
+                    html.push_str(&format!(
+                        r#"        <div class="nb-output nb-output-stream">
             <div class="nb-output-content">{}</div>
         </div>
 "#,
-                    escaped
-                ));
+                        escaped
+                    ));
+                }
             }
         }
         "execute_result" | "display_data" => {
@@ -747,10 +874,9 @@ fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
                         b64
                     ));
                 } else if let Some(html_content) = data.get("text/html") {
-                    // Prefer HTML output over plain text
+                    // HTML output - no truncation per design decision
                     let html_str = html_content.to_string();
                     let cleaned = strip_pre_wrapper(&html_str);
-                    // Only show Out[n] for execute_result, not display_data
                     let prompt = if output.output_type == "execute_result" {
                         format!(r#"<div class="nb-output-header"><span class="nb-prompt nb-out">Out[{}]:</span></div>"#, exec_count)
                     } else {
@@ -765,52 +891,81 @@ fn render_output(html: &mut String, output: &CellOutput, exec_count: &str) {
                         prompt, cleaned
                     ));
                 } else if let Some(text) = data.get("text/plain") {
-                    let escaped = html_escape(&text.to_string());
-                    // Only show Out[n] for execute_result, not display_data
+                    let text_str = text.to_string();
+                    let lines: Vec<String> = text_str.lines().map(|l| html_escape(l)).collect();
+
                     let prompt = if output.output_type == "execute_result" {
                         format!(r#"<div class="nb-output-header"><span class="nb-prompt nb-out">Out[{}]:</span></div>"#, exec_count)
                     } else {
                         String::new()
                     };
-                    html.push_str(&format!(
-                        r#"        <div class="nb-output nb-output-text">
+
+                    if lines.len() > 290 {
+                        return Some(render_truncated_text(
+                            html,
+                            &lines,
+                            cell_idx,
+                            output_idx,
+                            "nb-output nb-output-text",
+                            &prompt,
+                        ));
+                    } else {
+                        let escaped = html_escape(&text_str);
+                        html.push_str(&format!(
+                            r#"        <div class="nb-output nb-output-text">
             {}
             <div class="nb-output-content">{}</div>
         </div>
 "#,
-                        prompt, escaped
-                    ));
+                            prompt, escaped
+                        ));
+                    }
                 }
             }
         }
         "error" => {
-            let mut error_html = String::new();
+            // Build error lines for potential truncation
+            let mut error_lines: Vec<String> = Vec::new();
+
             if let Some(ename) = &output.ename {
-                error_html.push_str(&format!("<span style=\"color:#e06c75;font-weight:bold\">{}</span>", html_escape(ename)));
+                let mut first_line = format!("<span style=\"color:#e06c75;font-weight:bold\">{}</span>", html_escape(ename));
                 if let Some(evalue) = &output.evalue {
-                    error_html.push_str(": ");
-                    error_html.push_str(&html_escape(evalue));
+                    first_line.push_str(": ");
+                    first_line.push_str(&html_escape(evalue));
                 }
-                error_html.push_str("\n");
+                error_lines.push(first_line);
             }
+
             if let Some(tb) = &output.traceback {
                 for line in tb {
-                    // Convert ANSI codes to HTML spans with colors
                     let colored = ansi_to_html(line);
-                    error_html.push_str(&colored);
-                    error_html.push_str("\n");
+                    error_lines.push(colored);
                 }
             }
-            html.push_str(&format!(
-                r#"        <div class="nb-output nb-output-error">
+
+            if error_lines.len() > 290 {
+                return Some(render_truncated_text(
+                    html,
+                    &error_lines,
+                    cell_idx,
+                    output_idx,
+                    "nb-output nb-output-error",
+                    "",
+                ));
+            } else {
+                let error_html = error_lines.join("\n");
+                html.push_str(&format!(
+                    r#"        <div class="nb-output nb-output-error">
             <div class="nb-output-content">{}</div>
         </div>
 "#,
-                error_html
-            ));
+                    error_html
+                ));
+            }
         }
         _ => {}
     }
+    None
 }
 
 fn extract_headings_from_markdown(markdown: &str, toc: &mut Vec<(usize, String)>) {

@@ -583,6 +583,51 @@ function handleFigureEscape(e) {
 }
 
 // ============================================================================
+// NOTEBOOK: OUTPUT TRUNCATION
+// ============================================================================
+
+function requestMoreLines(cellIdx, outputIdx, amount) {
+    if (window.ipc) {
+        window.ipc.postMessage(`get_output_lines:${cellIdx}:${outputIdx}:${amount}`);
+    }
+}
+
+// Called from Rust via evaluate_script
+function receiveOutputLines(cellIdx, outputIdx, linesHtml, hiddenRemaining, isComplete) {
+    const output = document.querySelector(
+        `.nb-output[data-cell-idx="${cellIdx}"][data-output-idx="${outputIdx}"]`
+    );
+    if (!output) return;
+
+    const headDiv = output.querySelector('.nb-output-head');
+    const truncatedDiv = output.querySelector('.nb-output-truncated');
+    const tailDiv = output.querySelector('.nb-output-tail');
+
+    if (isComplete) {
+        // Show all remaining lines, remove truncation UI
+        if (headDiv && linesHtml) {
+            headDiv.innerHTML += '\n' + linesHtml;
+        }
+        if (truncatedDiv) truncatedDiv.remove();
+        if (tailDiv && headDiv) {
+            headDiv.innerHTML += '\n' + tailDiv.innerHTML;
+            tailDiv.remove();
+        }
+    } else {
+        // Append lines, update count
+        if (headDiv && linesHtml) {
+            headDiv.innerHTML += '\n' + linesHtml;
+        }
+        if (truncatedDiv) {
+            const infoSpan = truncatedDiv.querySelector('.nb-truncated-info');
+            if (infoSpan) {
+                infoSpan.textContent = `${hiddenRemaining} lines hidden`;
+            }
+        }
+    }
+}
+
+// ============================================================================
 // MARKDOWN: CODE BLOCKS & TERMINAL VIEW
 // ============================================================================
 
@@ -944,6 +989,31 @@ function initNotebook() {
     notebookView.querySelectorAll('.nb-figure').forEach(img => {
         img.addEventListener('click', function() {
             expandFigure(this);
+        });
+    });
+
+    // Wire up output truncation buttons
+    notebookView.querySelectorAll('.nb-show-more').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const output = this.closest('.nb-output');
+            if (output) {
+                const cellIdx = parseInt(output.dataset.cellIdx);
+                const outputIdx = parseInt(output.dataset.outputIdx);
+                requestMoreLines(cellIdx, outputIdx, this.dataset.amount || '50');
+            }
+        });
+    });
+
+    notebookView.querySelectorAll('.nb-show-all').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const output = this.closest('.nb-output');
+            if (output) {
+                const cellIdx = parseInt(output.dataset.cellIdx);
+                const outputIdx = parseInt(output.dataset.outputIdx);
+                requestMoreLines(cellIdx, outputIdx, 'all');
+            }
         });
     });
 }

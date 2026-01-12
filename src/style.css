@@ -568,14 +568,20 @@ body.light .nb-out {
 .nb-output-content {
     max-height: 300px;
     overflow-y: auto;
+    overflow-x: auto;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     font-size: 12px;
     line-height: 1.4;
     background: var(--bg-tertiary);
     padding: 10px 12px;
     border-radius: 6px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    white-space: pre;
+}
+
+/* Reset whitespace for truncation UI container */
+.nb-output-content:has(.nb-output-truncated) {
+    white-space: normal;
+    overflow-x: hidden;
 }
 
 /* Error output */
@@ -641,4 +647,50 @@ body.light .nb-output-error .nb-output-content {
     padding: 10px 12px;
     border-radius: 6px;
     white-space: pre-wrap;
+}
+
+/* Output truncation UI */
+.nb-output-truncated {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 10px;
+    margin: 12px 0;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.nb-truncated-info {
+    color: var(--text-muted);
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+.nb-show-more,
+.nb-show-all {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 4px 10px;
+    color: var(--accent-color);
+    cursor: pointer;
+    font-size: 11px;
+    transition: background 0.15s;
+}
+
+.nb-show-more:hover,
+.nb-show-all:hover {
+    background: var(--border-color);
+}
+
+.nb-output-head {
+    white-space: pre;
+}
+
+.nb-output-tail {
+    white-space: pre;
+    margin-top: 8px;
+    opacity: 0.7;
+    border: none;
 }
