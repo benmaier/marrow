@@ -405,19 +405,19 @@ body.light .hljs {
 body.light .hljs-comment,
 body.light .hljs-quote { color: #6e7781; }
 body.light .hljs-keyword,
-body.light .hljs-selector-tag,
-body.light .hljs-addition { color: #cf222e; }
-body.light .hljs-number,
+body.light .hljs-selector-tag { color: #cf222e; }
+body.light .hljs-number { color: #0550ae; }
 body.light .hljs-string,
 body.light .hljs-meta .hljs-meta-string,
 body.light .hljs-literal,
 body.light .hljs-doctag,
 body.light .hljs-regexp { color: #0a3069; }
 body.light .hljs-title,
+body.light .hljs-title.function_,
 body.light .hljs-section,
 body.light .hljs-name,
 body.light .hljs-selector-id,
-body.light .hljs-selector-class { color: #0550ae; }
+body.light .hljs-selector-class { color: #8250df; }
 body.light .hljs-attribute,
 body.light .hljs-attr,
 body.light .hljs-variable,
@@ -432,11 +432,13 @@ body.light .hljs-meta .hljs-keyword,
 body.light .hljs-selector-attr,
 body.light .hljs-selector-pseudo,
 body.light .hljs-link { color: #0550ae; }
-body.light .hljs-built_in,
+body.light .hljs-built_in { color: #8250df; }
+body.light .hljs-addition { color: #116329; }
 body.light .hljs-deletion { color: #cf222e; }
 body.light .hljs-formula { background: #f6f8fa; }
 body.light .hljs-emphasis { font-style: italic; }
 body.light .hljs-strong { font-weight: bold; }
+body.light .hljs-params { color: #953800; }
 
 /* ===========================================================================
    NOTEBOOK MODE
@@ -533,7 +535,7 @@ body.light .nb-out {
 
 .nb-input pre {
     margin: 0;
-    padding: 12px;
+    padding: 8px 10px;
     background: var(--code-bg);
     border-radius: 6px;
     overflow-x: auto;
@@ -543,6 +545,10 @@ body.light .nb-out {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     font-size: 13px;
     line-height: 1.45;
+}
+
+.nb-input pre code.hljs {
+    padding: 8px 10px;  /* Override highlight.js 1em padding */
 }
 
 /* Outputs container */
@@ -572,7 +578,7 @@ body.light .nb-out {
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
     font-size: 12px;
     line-height: 1.4;
-    background: var(--bg-tertiary);
+    background: transparent;
     padding: 10px 12px;
     border-radius: 6px;
     white-space: pre;
@@ -582,6 +588,18 @@ body.light .nb-out {
 .nb-output-content:has(.nb-output-truncated) {
     white-space: normal;
     overflow-x: hidden;
+}
+
+/* Output wrap mode (W key toggle) */
+body.output-wrapped .nb-output-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+body.output-wrapped .nb-output-head,
+body.output-wrapped .nb-output-tail {
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* Error output */
@@ -598,7 +616,8 @@ body.light .nb-output-error .nb-output-content {
 /* Figure/image output */
 .nb-output-image {
     position: relative;
-    text-align: center;
+    text-align: left;
+    align-self: flex-start;  /* Don't stretch to fill flex container */
 }
 
 .nb-figure {
@@ -693,4 +712,21 @@ body.light .nb-output-error .nb-output-content {
     margin-top: 8px;
     opacity: 0.7;
     border: none;
+}
+
+/* Stderr output styling */
+.stderr {
+    color: #d19a66;  /* orange for stderr (tqdm, etc.) */
+}
+
+.stderr-warning {
+    color: #e5c07b;  /* brighter orange/yellow for warnings */
+}
+
+body.light .stderr {
+    color: #953800;
+}
+
+body.light .stderr-warning {
+    color: #9a6700;
 }
