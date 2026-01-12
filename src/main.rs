@@ -37,7 +37,7 @@ impl Default for Settings {
         Self {
             window_width: 800.0,
             window_height: 900.0,
-            toc_visible: false,
+            toc_visible: true,
             view_mode: "github".to_string(),
             font_size_level: 0,
             theme: "dark".to_string(),

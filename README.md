@@ -1,25 +1,24 @@
+![Marrow icon](icon/marrow5-128.png)
+
 # Marrow
 
 A fast, native macOS viewer for Markdown with raw/formatted view modes, smart copy, and a distraction-free reading experience. Experimental Jupyter notebook view mode included.
 
+⬇️ **[Download Marrow.app.zip](https://github.com/benmaier/marrow/releases/download/v0.1.0/Marrow.app.zip)**
+
+If you find Marrow useful, consider [buying me a coffee](https://buymeacoffee.com/benmaier) ☕
+
 ## Why Marrow?
 
-Increasingly, find myself treating `.md` files like `.pdf`s. LLMs generate them, I just read them and copy stuff that I need. The same goes for Jupyter notebooks:
-I simply want to check an old analysis, not rerun it.
+I increasingly treat `.md` files like `.pdf`s; LLMs generate them, I just read them and copy what I need. Same for Jupyter notebooks: I want to check an old analysis, not rerun it.
 
-When I "quick-look" an `.md` on macOS, I see a bunch of unformatted markdown source, not very friendly to the eye. For Jupyter notebooks even worse: raw JSON.
-When I double click, a clunky IDE boots up (taking seconds) and typically opens Markdown source in editing mode, maybe with a rendering pane to show formatted.
-God forbid I press the wrong key, suddenly I have made unwanted changes.
+But macOS Quick Look shows raw markdown (or worse, raw JSON for notebooks). Double-clicking opens a clunky IDE that takes seconds to boot, shows an edit view, and risks accidental changes. I don't want to edit; I just want to read.
 
-I don't want to edit the file. I just want to read it in a formatted manner. The same largely goes for Jupyter notebooks.
+So I had Claude Code build Marrow in Rust+JS. It opens instantly, renders beautifully, and is view-only.
 
-To alleviate this pain I had claude code build Marrow in Rust+JS, which means it opens and renders files almost instantly, for viewing only. Lightweight, fast, native.
-
-Major other pain points: Try to copy text from a formatted Markdown: tables, bullet points, everything disappears when you paste it in a LLM chat window or elsewhere.
-
-Marrow offers "smart copy": It maps your selection in rendered Markdown back to the source code, so you can paste it elsewhere.
-
-Second, it offers a "Table of Contents" pane that lets you track where you are in the document.
+**Bonus features:**
+- **Smart copy** maps your selection back to markdown source, so tables and formatting survive pasting
+- **Table of Contents** lets you navigate and track your position
 
 <!-- There are plenty of markdown *editors*. But what if you just want to *read* markdown or notebooks?
 
@@ -321,6 +320,10 @@ make update-vendor
 # Or run directly with --verify to check checksums:
 ./vendor/update-vendor.sh --verify
 ```
+
+## Support
+
+If you find Marrow useful, consider [buying me a coffee](https://buymeacoffee.com/benmaier).
 
 ## License
 
