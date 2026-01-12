@@ -1756,6 +1756,13 @@ fn build_full_html_markdown(content: &str, rendered_html: &str, toc: &[(usize, S
         .collect::<Vec<_>>()
         .join(",");
 
+    // Determine initial view mode
+    let (github_display, terminal_display, initial_mode) = if settings.view_mode == "terminal" {
+        ("none", "block", "terminal")
+    } else {
+        ("block", "none", "github")
+    };
+
     HTML_TEMPLATE
         .replace("{hljs_css}", HLJS_CSS)
         .replace("{hljs_js}", HLJS_JS)
@@ -1768,6 +1775,9 @@ fn build_full_html_markdown(content: &str, rendered_html: &str, toc: &[(usize, S
         .replace("{notebook_view}", "")
         .replace("{md_display}", "block")
         .replace("{nb_display}", "none")
+        .replace("{github_display}", github_display)
+        .replace("{terminal_display}", terminal_display)
+        .replace("{initial_mode}", initial_mode)
         .replace("{toc}", &toc_html)
         .replace("{markdown_lines}", &markdown_lines_json)
         .replace("{settings}", &settings_json)
@@ -1790,6 +1800,9 @@ fn build_full_html_notebook(notebook_html: &str, toc: &[(usize, String)], settin
         .replace("{notebook_view}", notebook_html)
         .replace("{md_display}", "none")
         .replace("{nb_display}", "block")
+        .replace("{github_display}", "none")
+        .replace("{terminal_display}", "none")
+        .replace("{initial_mode}", "github")
         .replace("{toc}", &toc_html)
         .replace("{markdown_lines}", "")
         .replace("{settings}", &settings_json)

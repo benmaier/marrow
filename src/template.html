@@ -16,11 +16,11 @@
                 <button onclick="searchNext()">↓</button>
                 <button onclick="closeSearch()">✕</button>
             </div>
-            <main class="content github" id="content">
+            <main class="content {initial_mode}" id="content" style="visibility: hidden;">
                 <!-- Markdown mode views -->
                 <div id="markdown-views" style="display:{md_display}">
-                    <div id="github-view" class="view-content">{github_view}</div>
-                    <div id="terminal-view" class="view-content" style="display:none;">{terminal_view}</div>
+                    <div id="github-view" class="view-content" style="display:{github_display};">{github_view}</div>
+                    <div id="terminal-view" class="view-content" style="display:{terminal_display};">{terminal_view}</div>
                 </div>
                 <!-- Notebook mode view -->
                 <div id="notebook-view" class="view-content" style="display:{nb_display}">{notebook_view}</div>

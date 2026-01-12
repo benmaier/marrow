@@ -1106,6 +1106,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial highlight
     updateTocHighlight();
+
+    // Reveal content after initialization (hidden in template to prevent flash)
+    document.getElementById('content').style.visibility = '';
 });
 
 function initNotebook() {
