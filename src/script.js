@@ -86,7 +86,9 @@ function getCurrentHeadingId() {
     const headings = document.querySelectorAll(activeView + ' h1, ' + activeView + ' h2, ' + activeView + ' h3, ' + activeView + ' h4, ' + activeView + ' h5, ' + activeView + ' h6, ' + activeView + ' [id].md-heading');
 
     let currentHeading = null;
-    const scrollTop = content.scrollTop;
+    // Clamp scrollTop to valid range (handles macOS bounce effect)
+    const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+    const scrollTop = Math.max(0, Math.min(content.scrollTop, maxScroll));
 
     for (const heading of headings) {
         if (heading.offsetTop <= scrollTop + 100) {
@@ -108,13 +110,26 @@ function setMode(mode, scrollToId) {
     document.getElementById('github-view').style.display = mode === 'github' ? 'block' : 'none';
     document.getElementById('terminal-view').style.display = mode === 'terminal' ? 'block' : 'none';
 
-    // Scroll to the same section in the new view
+    // Reset scroll first
+    content.scrollTop = 0;
+
+    // Wait for browser to render the new view before scrolling
     if (scrollToId) {
-        const newView = mode === 'github' ? '#github-view' : '#terminal-view';
-        const el = document.querySelector(newView + ' #' + CSS.escape(scrollToId));
-        if (el) {
-            el.scrollIntoView({ block: 'start' });
-        }
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const newView = mode === 'github' ? '#github-view' : '#terminal-view';
+                const el = document.querySelector(newView + ' #' + CSS.escape(scrollToId));
+                if (el) {
+                    // Calculate target scroll position
+                    const targetTop = el.offsetTop;
+                    // Only scroll if content is actually scrollable
+                    const maxScroll = content.scrollHeight - content.clientHeight;
+                    if (maxScroll > 0) {
+                        content.scrollTop = Math.min(targetTop, maxScroll);
+                    }
+                }
+            });
+        });
     }
 
     saveSettings();
@@ -730,6 +745,7 @@ function highlightMarkdown() {
     let inCodeBlock = false;
     let codeBlockLang = '';
     let codeBlockLines = [];
+    let inComment = false;
 
     // Pre-process: format tables
     let lines = text.split('\n');
@@ -796,6 +812,34 @@ function highlightMarkdown() {
         if (inCodeBlock) {
             codeBlockLines.push(line);
             continue;
+        }
+
+        // HTML comments - handle multi-line
+        if (inComment) {
+            if (line.includes('-->')) {
+                // Comment ends on this line
+                inComment = false;
+                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
+                continue;
+            } else {
+                // Still inside comment
+                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
+                continue;
+            }
+        }
+
+        // Check for comment start
+        if (line.includes('<!--')) {
+            if (line.includes('-->')) {
+                // Single-line comment
+                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
+                continue;
+            } else {
+                // Comment starts but doesn't end on this line
+                inComment = true;
+                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
+                continue;
+            }
         }
 
         // Check for indentation before escaping
@@ -965,7 +1009,7 @@ function reloadContent(newHtml, newTocHtml, isNotebookReload, newTerminalHtml) {
             }
         }
         if (terminalView && newTerminalHtml) {
-            terminalView.innerHTML = '<pre>' + newTerminalHtml + '</pre>';
+            terminalView.innerHTML = newTerminalHtml;
         }
         // Re-initialize markdown features
         initCodeBlocks();

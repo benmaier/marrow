@@ -355,6 +355,7 @@ mark.search-highlight.current {
 .md-hr { color: #444; }
 .md-table { color: #999; }
 .md-table-sep { color: #555; }
+.md-comment { color: #666; }
 .md-link { color: #6a9fcf; text-decoration: none; }
 .md-link:hover { text-decoration: underline; }
 
@@ -386,6 +387,7 @@ body.light .md-blockquote { color: #57606a; }
 body.light .md-hr { color: #d0d7de; }
 body.light .md-table { color: #24292f; }
 body.light .md-table-sep { color: #6e7781; }
+body.light .md-comment { color: #8c959f; }
 body.light .md-link { color: #0969da; }
 body.light .md-code-block-wrapper { background: rgba(0, 0, 0, 0.06); }
 
