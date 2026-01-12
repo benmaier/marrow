@@ -104,6 +104,9 @@ function getCurrentHeadingId() {
 function setMode(mode, scrollToId) {
     currentMode = mode;
     const content = document.getElementById('content');
+
+    // Hide content while repositioning to prevent flash
+    content.style.visibility = 'hidden';
     content.className = 'content ' + mode;
 
     // Toggle views
@@ -114,9 +117,9 @@ function setMode(mode, scrollToId) {
     content.scrollTop = 0;
 
     // Wait for browser to render the new view before scrolling
-    if (scrollToId) {
+    requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
+            if (scrollToId) {
                 const newView = mode === 'github' ? '#github-view' : '#terminal-view';
                 const el = document.querySelector(newView + ' #' + CSS.escape(scrollToId));
                 if (el) {
@@ -128,9 +131,11 @@ function setMode(mode, scrollToId) {
                         content.scrollTop = Math.min(targetTop, maxScroll);
                     }
                 }
-            });
+            }
+            // Show content after positioning
+            content.style.visibility = '';
         });
-    }
+    });
 
     saveSettings();
 }
@@ -779,6 +784,26 @@ function highlightMarkdown() {
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
 
+        // HTML comments - handle multi-line (check before code blocks so comments containing code aren't highlighted)
+        if (inComment) {
+            if (line.includes('-->')) {
+                // Comment ends on this line
+                inComment = false;
+            }
+            html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
+            continue;
+        }
+
+        // Check for comment start (before code blocks)
+        if (line.includes('<!--')) {
+            if (!line.includes('-->')) {
+                // Comment starts but doesn't end on this line
+                inComment = true;
+            }
+            html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
+            continue;
+        }
+
         // Code block start/end
         if (line.match(/^```/)) {
             if (!inCodeBlock) {
@@ -812,34 +837,6 @@ function highlightMarkdown() {
         if (inCodeBlock) {
             codeBlockLines.push(line);
             continue;
-        }
-
-        // HTML comments - handle multi-line
-        if (inComment) {
-            if (line.includes('-->')) {
-                // Comment ends on this line
-                inComment = false;
-                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
-                continue;
-            } else {
-                // Still inside comment
-                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
-                continue;
-            }
-        }
-
-        // Check for comment start
-        if (line.includes('<!--')) {
-            if (line.includes('-->')) {
-                // Single-line comment
-                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
-                continue;
-            } else {
-                // Comment starts but doesn't end on this line
-                inComment = true;
-                html += makeLine('<span class="md-comment">' + escapeHtml(line) + '</span>', 0);
-                continue;
-            }
         }
 
         // Check for indentation before escaping
