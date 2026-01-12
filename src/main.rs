@@ -954,6 +954,16 @@ fn render_output(
 "#,
                         b64
                     ));
+                } else if let Some(svg) = data.get("image/svg+xml") {
+                    // SVG can be embedded directly as HTML
+                    let svg_str = svg.to_string();
+                    html.push_str(&format!(
+                        r#"        <div class="nb-output nb-output-svg">
+            {}
+        </div>
+"#,
+                        svg_str
+                    ));
                 } else if let Some(html_content) = data.get("text/html") {
                     // HTML output - no truncation per design decision
                     let html_str = html_content.to_string();
