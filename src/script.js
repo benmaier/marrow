@@ -910,6 +910,90 @@ function slugify(text) {
 }
 
 // ============================================================================
+// FILE RELOAD (Live refresh on file changes)
+// ============================================================================
+
+/**
+ * Called from Rust when the file changes.
+ * Replaces content while preserving scroll position.
+ *
+ * @param {string} newHtml - New rendered HTML content
+ * @param {string} newTocHtml - New TOC HTML
+ * @param {boolean} isNotebookReload - Whether this is a notebook file
+ * @param {string} newTerminalHtml - For markdown: new terminal view content (optional)
+ */
+function reloadContent(newHtml, newTocHtml, isNotebookReload, newTerminalHtml) {
+    const content = document.getElementById('content');
+    const scrollTop = content.scrollTop;
+    const scrollHeight = content.scrollHeight;
+    const scrollRatio = scrollHeight > 0 ? scrollTop / scrollHeight : 0;
+
+    // Update main content
+    if (isNotebookReload) {
+        const notebookView = document.getElementById('notebook-view');
+        if (notebookView) {
+            notebookView.innerHTML = newHtml;
+            // Re-initialize notebook features
+            initNotebook();
+            // Re-render KaTeX math in markdown cells
+            if (typeof renderMathInElement !== 'undefined') {
+                notebookView.querySelectorAll('.nb-markdown-cell').forEach(cell => {
+                    renderMathInElement(cell, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false}
+                        ],
+                        throwOnError: false
+                    });
+                });
+            }
+        }
+    } else {
+        const githubView = document.getElementById('github-view');
+        const terminalView = document.getElementById('terminal-view');
+        if (githubView) {
+            githubView.innerHTML = newHtml;
+            // Re-render KaTeX math
+            if (typeof renderMathInElement !== 'undefined') {
+                renderMathInElement(githubView, {
+                    delimiters: [
+                        {left: '$$', right: '$$', display: true},
+                        {left: '$', right: '$', display: false}
+                    ],
+                    throwOnError: false
+                });
+            }
+        }
+        if (terminalView && newTerminalHtml) {
+            terminalView.innerHTML = '<pre>' + newTerminalHtml + '</pre>';
+        }
+        // Re-initialize markdown features
+        initCodeBlocks();
+    }
+
+    // Update TOC
+    const toc = document.getElementById('toc');
+    if (toc) {
+        toc.innerHTML = newTocHtml;
+    }
+
+    // Restore scroll position (use ratio as fallback if content height changed significantly)
+    requestAnimationFrame(() => {
+        const newScrollHeight = content.scrollHeight;
+        // If content height is similar, use absolute position; otherwise use ratio
+        const oldHeightEstimate = scrollRatio > 0 ? scrollTop / scrollRatio : 0;
+        if (Math.abs(newScrollHeight - oldHeightEstimate) < 100 || scrollRatio === 0) {
+            content.scrollTop = scrollTop;
+        } else {
+            content.scrollTop = scrollRatio * newScrollHeight;
+        }
+
+        // Update TOC highlight
+        updateTocHighlight();
+    });
+}
+
+// ============================================================================
 // TOC & INITIALIZATION
 // ============================================================================
 

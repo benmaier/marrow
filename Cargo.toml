@@ -15,6 +15,7 @@ serde_json = "1"
 arboard = "3"
 base64 = "0.22"
 urlencoding = "2"
+notify = { version = "6", default-features = false, features = ["macos_fsevent"] }
 
 [package.metadata.bundle]
 name = "Marrow"

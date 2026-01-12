@@ -2,12 +2,14 @@
 // IMPORTS & TYPES
 // ============================================================================
 
+use notify::{Config as NotifyConfig, Event as NotifyEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use pulldown_cmark::{Options, Parser, HeadingLevel, Event, Tag, TagEnd, CodeBlockKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tao::{
     dpi::{LogicalSize, PhysicalPosition},
     event::{Event as TaoEvent, WindowEvent},
@@ -26,6 +28,7 @@ enum UserEvent {
         output_idx: usize,
         amount: String,
     },
+    FileChanged(WindowId),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -179,6 +182,79 @@ struct AppWindow {
     webview: WebView,
     file_path: Option<PathBuf>,
     truncated_outputs: HashMap<(usize, usize), TruncatedOutput>,
+    #[allow(dead_code)]
+    watcher: Option<RecommendedWatcher>,
+    last_reload: Instant,
+}
+
+fn setup_file_watcher(
+    path: &PathBuf,
+    window_id: WindowId,
+    proxy: EventLoopProxy<UserEvent>,
+) -> Option<RecommendedWatcher> {
+    let target_path = path.clone();
+
+    let mut watcher = RecommendedWatcher::new(
+        move |res: Result<NotifyEvent, _>| {
+            if let Ok(event) = res {
+                // React to modify or create events (editors often save by delete+create)
+                if event.kind.is_modify() || event.kind.is_create() {
+                    // Check if any of the affected paths match our target file
+                    let is_our_file = event.paths.iter().any(|p| p == &target_path);
+                    if is_our_file {
+                        let _ = proxy.send_event(UserEvent::FileChanged(window_id));
+                    }
+                }
+            }
+        },
+        NotifyConfig::default().with_poll_interval(Duration::from_millis(500)),
+    ).ok()?;
+
+    // Watch the file's parent directory (more reliable than watching file directly)
+    // This handles atomic saves where editors delete + rename temp file
+    if let Some(parent) = path.parent() {
+        watcher.watch(parent, RecursiveMode::NonRecursive).ok()?;
+    }
+
+    Some(watcher)
+}
+
+/// Generate JavaScript call to reload content in the WebView
+fn reload_file_content(app_window: &AppWindow) -> Option<String> {
+    let path = app_window.file_path.as_ref()?;
+    let base_dir = path.parent();
+    let extension = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("md")
+        .to_lowercase();
+
+    if extension == "ipynb" {
+        // Read raw JSON for notebooks (don't use load_file which converts to markdown)
+        let content = std::fs::read_to_string(path).ok()?;
+        let notebook = serde_json::from_str::<Notebook>(&content).ok()?;
+        let (notebook_html, toc, _truncated) = notebook_to_html(&notebook, base_dir);
+        let toc_html = build_toc_html(&toc);
+        Some(format!(
+            "reloadContent({}, {}, true)",
+            serde_json::to_string(&notebook_html).unwrap_or_default(),
+            serde_json::to_string(&toc_html).unwrap_or_default(),
+        ))
+    } else {
+        // For markdown, use load_file
+        let (content, _filename) = load_file(Some(path));
+        // Parse as markdown
+        let toc = extract_toc(&content);
+        let html_content = markdown_to_html(&content, base_dir);
+        let toc_html = build_toc_html(&toc);
+        // Terminal view needs escaped raw content
+        let terminal_content = html_escape(&content);
+        Some(format!(
+            "reloadContent({}, {}, false, {})",
+            serde_json::to_string(&html_content).unwrap_or_default(),
+            serde_json::to_string(&toc_html).unwrap_or_default(),
+            serde_json::to_string(&terminal_content).unwrap_or_default(),
+        ))
+    }
 }
 
 fn truncate_end(s: &str, max: usize) -> String {
@@ -420,7 +496,22 @@ fn create_window(
         .build(&window)?;
 
     let file_path = path.cloned();
-    Ok((window_id, AppWindow { window, webview, file_path, truncated_outputs }))
+
+    // Set up file watcher for live reload
+    let watcher = if let Some(p) = &file_path {
+        setup_file_watcher(p, window_id, proxy)
+    } else {
+        None
+    };
+
+    Ok((window_id, AppWindow {
+        window,
+        webview,
+        file_path,
+        truncated_outputs,
+        watcher,
+        last_reload: Instant::now(),
+    }))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -501,6 +592,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             hidden_remaining,
                             is_complete
                         );
+                        let _ = app_window.webview.evaluate_script(&js);
+                    }
+                }
+            }
+            TaoEvent::UserEvent(UserEvent::FileChanged(window_id)) => {
+                if let Some(app_window) = windows.get_mut(&window_id) {
+                    // Debounce: ignore if last reload was <100ms ago
+                    if app_window.last_reload.elapsed() < Duration::from_millis(100) {
+                        return;
+                    }
+                    app_window.last_reload = Instant::now();
+
+                    // Small delay to let file writes complete (avoid reading mid-write)
+                    std::thread::sleep(Duration::from_millis(50));
+
+                    if let Some(js) = reload_file_content(app_window) {
                         let _ = app_window.webview.evaluate_script(&js);
                     }
                 }
