@@ -1,10 +1,27 @@
 # Marrow
 
-A fast, native macOS viewer for Markdown and Jupyter notebooks with dual rendering modes, smart copy, and a distraction-free reading experience.
+A fast, native macOS viewer for Markdown with raw/formatted view modes, smart copy, and a distraction-free reading experience. Experimental Jupyter notebook view mode included.
 
 ## Why Marrow?
 
-There are plenty of markdown *editors*. But what if you just want to *read* markdown or notebooks?
+Increasingly, find myself treating `.md` files like `.pdf`s. LLMs generate them, I just read them and copy stuff that I need. The same goes for Jupyter notebooks:
+I simply want to check an old analysis, not rerun it.
+
+When I "quick-look" an `.md` on macOS, I see a bunch of unformatted markdown source, not very friendly to the eye. For Jupyter notebooks even worse: raw JSON.
+When I double click, a clunky IDE boots up (taking seconds) and typically opens Markdown source in editing mode, maybe with a rendering pane to show formatted.
+God forbid I press the wrong key, suddenly I have made unwanted changes.
+
+I don't want to edit the file. I just want to read it in a formatted manner. The same largely goes for Jupyter notebooks.
+
+To alleviate this pain I had claude code build Marrow in Rust+JS, which means it opens and renders files almost instantly, for viewing only. Lightweight, fast, native.
+
+Major other pain points: Try to copy text from a formatted Markdown: tables, bullet points, everything disappears when you paste it in a LLM chat window or elsewhere.
+
+Marrow offers "smart copy": It maps your selection in rendered Markdown back to the source code, so you can paste it elsewhere.
+
+Second, it offers a "Table of Contents" pane that lets you track where you are in the document.
+
+<!-- There are plenty of markdown *editors*. But what if you just want to *read* markdown or notebooks?
 
 Marrow is a viewer, not an editor. No syntax panes, no live preview splits, no project management. Just:
 
@@ -13,7 +30,7 @@ Marrow is a viewer, not an editor. No syntax panes, no live preview splits, no p
 - **Copy as markdown** when you select and copy
 - **Navigate with a TOC** generated from headings
 
-That's it. Lightweight, fast, native.
+That's it. Lightweight, fast, native. -->
 
 ## Features
 
@@ -195,7 +212,7 @@ def hello():
 ```
 ````
 
-## Building
+## Dev Guide
 
 ### Requirements
 
@@ -311,4 +328,4 @@ MIT
 
 ## Contributing
 
-Issues and PRs welcome at [github.com/benmaier/marrow](https://github.com/benmaier/marrow).
+Marrow is a tool that I personally needed. It's been built with Claude Code within a few hours of total dev time. While I'm happy to hear about issues at [github.com/benmaier/marrow](https://github.com/benmaier/marrow) so I can improve the tool *mainly for myself*, I probably won't incorporate features that I don't find sensible. Also, I won't have time for PRs. If you like Marrow but want it to behave differently, you're welcome to fork it and tell Claude Code how it should be changed for you.
