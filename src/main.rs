@@ -1763,6 +1763,12 @@ fn build_full_html_markdown(content: &str, rendered_html: &str, toc: &[(usize, S
         ("block", "none", "github")
     };
 
+    // Calculate initial font size and theme
+    let base_font_size: f64 = 15.0;
+    let scale = 1.0 + (settings.font_size_level as f64 * 0.1);
+    let font_size = format!("{:.1}", base_font_size * scale);
+    let body_class = if settings.theme == "light" { "light" } else { "" };
+
     HTML_TEMPLATE
         .replace("{hljs_css}", HLJS_CSS)
         .replace("{hljs_js}", HLJS_JS)
@@ -1770,6 +1776,8 @@ fn build_full_html_markdown(content: &str, rendered_html: &str, toc: &[(usize, S
         .replace("{katex_js}", KATEX_JS)
         .replace("{katex_auto}", KATEX_AUTO)
         .replace("{css}", CSS)
+        .replace("{body_class}", body_class)
+        .replace("{font_size}", &font_size)
         .replace("{github_view}", rendered_html)
         .replace("{terminal_view}", &raw_markdown_escaped)
         .replace("{notebook_view}", "")
@@ -1788,6 +1796,12 @@ fn build_full_html_notebook(notebook_html: &str, toc: &[(usize, String)], settin
     let settings_json = build_settings_json(settings, extension);
     let toc_html = build_toc_html(toc);
 
+    // Calculate initial font size and theme
+    let base_font_size: f64 = 15.0;
+    let scale = 1.0 + (settings.font_size_level as f64 * 0.1);
+    let font_size = format!("{:.1}", base_font_size * scale);
+    let body_class = if settings.theme == "light" { "light" } else { "" };
+
     HTML_TEMPLATE
         .replace("{hljs_css}", HLJS_CSS)
         .replace("{hljs_js}", HLJS_JS)
@@ -1795,6 +1809,8 @@ fn build_full_html_notebook(notebook_html: &str, toc: &[(usize, String)], settin
         .replace("{katex_js}", KATEX_JS)
         .replace("{katex_auto}", KATEX_AUTO)
         .replace("{css}", CSS)
+        .replace("{body_class}", body_class)
+        .replace("{font_size}", &font_size)
         .replace("{github_view}", "")
         .replace("{terminal_view}", "")
         .replace("{notebook_view}", notebook_html)

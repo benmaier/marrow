@@ -6,7 +6,7 @@
     <style>{katex_css}</style>
     <style>{css}</style>
 </head>
-<body>
+<body class="{body_class}" style="font-size: {font_size}px;">
     <div class="container">
         <div class="content-wrapper">
             <div class="search-bar hidden" id="search-bar">
@@ -16,7 +16,7 @@
                 <button onclick="searchNext()">↓</button>
                 <button onclick="closeSearch()">✕</button>
             </div>
-            <main class="content {initial_mode}" id="content" style="visibility: hidden;">
+            <main class="content {initial_mode}" id="content">
                 <!-- Markdown mode views -->
                 <div id="markdown-views" style="display:{md_display}">
                     <div id="github-view" class="view-content" style="display:{github_display};">{github_view}</div>
