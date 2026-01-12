@@ -1074,23 +1074,41 @@ window.addEventListener('resize', function() {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    // Show TOC if enabled
-    if (tocVisible) {
-        document.getElementById('toc').classList.remove('hidden');
+    if (isNotebook) {
+        // Notebook mode initialization
+        initNotebook();
+    } else {
+        // Markdown mode initialization
+        initCodeBlocks();
+
+        // Set view mode
+        const content = document.getElementById('content');
+        content.className = 'content ' + currentMode;
+        document.getElementById('github-view').style.display = currentMode === 'github' ? 'block' : 'none';
+        document.getElementById('terminal-view').style.display = currentMode === 'terminal' ? 'block' : 'none';
     }
 
     // Add scroll listener for TOC highlighting
     document.getElementById('content').addEventListener('scroll', updateTocHighlight);
 
-    // Initial TOC highlight
+    // Show TOC if enabled
+    if (tocVisible) {
+        document.getElementById('toc').classList.remove('hidden');
+    }
+
+    // Apply font size
+    applyFontSize();
+
+    // Apply theme
+    if (currentTheme === 'light') {
+        document.body.classList.add('light');
+    }
+
+    // Initial highlight
     updateTocHighlight();
 
-    // Run syntax highlighting last (font size and theme already set by Rust)
-    if (isNotebook) {
-        initNotebook();
-    } else {
-        initCodeBlocks();
-    }
+    // Reveal content after initialization (hidden in template to prevent flash)
+    document.getElementById('content').style.visibility = '';
 });
 
 function initNotebook() {
