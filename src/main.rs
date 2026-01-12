@@ -36,6 +36,10 @@ struct Settings {
     view_mode: String,
     font_size_level: i32,
     theme: String,
+    #[serde(default)]
+    cells_collapsed: bool,
+    #[serde(default)]
+    output_wrapped: bool,
 }
 
 impl Default for Settings {
@@ -47,6 +51,8 @@ impl Default for Settings {
             view_mode: "github".to_string(),
             font_size_level: 0,
             theme: "dark".to_string(),
+            cells_collapsed: false,
+            output_wrapped: false,
         }
     }
 }
@@ -115,6 +121,8 @@ impl StringOrArray {
 #[derive(Deserialize)]
 struct CellOutput {
     output_type: String,
+    #[serde(default)]
+    name: Option<String>, // "stdout" or "stderr" for stream outputs
     #[serde(default)]
     text: Option<StringOrArray>,
     #[serde(default)]
@@ -743,12 +751,53 @@ fn notebook_to_html(notebook: &Notebook, base_dir: Option<&std::path::Path>) -> 
                     cell_idx, exec_count, source
                 ));
 
-                // Render outputs
+                // Render outputs (merging consecutive stream outputs)
                 if !cell.outputs.is_empty() {
                     html.push_str("    <div class=\"nb-outputs\">\n");
-                    for (output_idx, output) in cell.outputs.iter().enumerate() {
-                        if let Some(truncated) = render_output(&mut html, output, &exec_count, cell_idx, output_idx) {
-                            truncated_outputs.insert((cell_idx, output_idx), truncated);
+                    let mut output_idx = 0;
+                    let mut i = 0;
+                    while i < cell.outputs.len() {
+                        let output = &cell.outputs[i];
+
+                        if output.output_type == "stream" {
+                            // Collect consecutive stream outputs
+                            let mut merged_lines: Vec<String> = Vec::new();
+                            while i < cell.outputs.len() && cell.outputs[i].output_type == "stream" {
+                                let stream_output = &cell.outputs[i];
+                                if let Some(text) = &stream_output.text {
+                                    let is_stderr = stream_output.name.as_deref() == Some("stderr");
+                                    for line in text.to_string().lines() {
+                                        let escaped = html_escape(line);
+                                        if is_stderr {
+                                            // Check if it's a warning line
+                                            let lower = line.to_lowercase();
+                                            if lower.contains("warning") {
+                                                merged_lines.push(format!("<span class=\"stderr-warning\">{}</span>", escaped));
+                                            } else {
+                                                merged_lines.push(format!("<span class=\"stderr\">{}</span>", escaped));
+                                            }
+                                        } else {
+                                            merged_lines.push(escaped);
+                                        }
+                                    }
+                                }
+                                i += 1;
+                            }
+
+                            // Render merged stream output
+                            if !merged_lines.is_empty() {
+                                if let Some(truncated) = render_merged_stream(&mut html, &merged_lines, cell_idx, output_idx) {
+                                    truncated_outputs.insert((cell_idx, output_idx), truncated);
+                                }
+                                output_idx += 1;
+                            }
+                        } else {
+                            // Non-stream output: render normally
+                            if let Some(truncated) = render_output(&mut html, output, &exec_count, cell_idx, output_idx) {
+                                truncated_outputs.insert((cell_idx, output_idx), truncated);
+                            }
+                            output_idx += 1;
+                            i += 1;
                         }
                     }
                     html.push_str("    </div>\n");
@@ -815,6 +864,38 @@ fn render_truncated_text(
         full_lines: lines.to_vec(),
         total_lines: total,
         shown_lines: 200,
+    }
+}
+
+// Render merged stream outputs (consecutive stdout/stderr combined into one block)
+fn render_merged_stream(
+    html: &mut String,
+    lines: &[String],
+    cell_idx: usize,
+    output_idx: usize,
+) -> Option<TruncatedOutput> {
+    if lines.is_empty() {
+        return None;
+    }
+
+    if lines.len() > 290 {
+        Some(render_truncated_text(
+            html,
+            lines,
+            cell_idx,
+            output_idx,
+            "nb-output nb-output-stream",
+            "",
+        ))
+    } else {
+        html.push_str(&format!(
+            r#"        <div class="nb-output nb-output-stream">
+            <div class="nb-output-content">{}</div>
+        </div>
+"#,
+            lines.join("\n")
+        ));
+        None
     }
 }
 

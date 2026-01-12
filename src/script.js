@@ -6,6 +6,8 @@ let currentMode = initialSettings.view_mode || 'github';
 let tocVisible = initialSettings.toc_visible || false;
 let fontSizeLevel = initialSettings.font_size_level || 0;
 let currentTheme = initialSettings.theme || 'dark';
+let cellsCollapsedPref = initialSettings.cells_collapsed || false;
+let outputWrapped = initialSettings.output_wrapped || false;
 const currentExtension = initialSettings.extension || 'md';
 const isNotebook = currentExtension === 'ipynb';
 const TOC_WIDTH = 200;
@@ -27,7 +29,9 @@ function saveSettings() {
             toc_visible: tocVisible,
             view_mode: currentMode,
             font_size_level: fontSizeLevel,
-            theme: currentTheme
+            theme: currentTheme,
+            cells_collapsed: cellsCollapsed,
+            output_wrapped: outputWrapped
         };
         // Include extension in message format: save_settings:ext:{json}
         window.ipc.postMessage('save_settings:' + currentExtension + ':' + JSON.stringify(settings));
@@ -376,6 +380,13 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
+    // W to toggle output wrap (notebook only)
+    if (e.key === 'w' && isNotebook) {
+        e.preventDefault();
+        toggleOutputWrap();
+        return;
+    }
+
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch(e.key.toLowerCase()) {
@@ -510,10 +521,10 @@ document.getElementById('search-input').addEventListener('keydown', function(e) 
 });
 
 // ============================================================================
-// NOTEBOOK: CELL COLLAPSE & IMAGE EXPAND
+// NOTEBOOK: CELL COLLAPSE, OUTPUT WRAP & IMAGE EXPAND
 // ============================================================================
 
-let cellsCollapsed = false;
+let cellsCollapsed = cellsCollapsedPref;  // Initialize from saved preference
 
 function checkAndSyncGlobalCollapseState() {
     // Check if all cells are in the same state, and if so, sync the global state
@@ -549,6 +560,17 @@ function toggleAllCells() {
     cellsCollapsed = !cellsCollapsed;
     cells.forEach(c => c.classList.toggle('collapsed', cellsCollapsed));
     window.scrollTo(0, scrollY); // Preserve scroll position
+    saveSettings();
+}
+
+function toggleOutputWrap() {
+    outputWrapped = !outputWrapped;
+    document.body.classList.toggle('output-wrapped', outputWrapped);
+    saveSettings();
+}
+
+function applyOutputWrap() {
+    document.body.classList.toggle('output-wrapped', outputWrapped);
 }
 
 function expandFigure(img) {
@@ -1016,4 +1038,11 @@ function initNotebook() {
             }
         });
     });
+
+    // Apply saved preferences
+    if (cellsCollapsed) {
+        const cells = document.querySelectorAll('.nb-cell');
+        cells.forEach(c => c.classList.add('collapsed'));
+    }
+    applyOutputWrap();
 }

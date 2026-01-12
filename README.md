@@ -118,6 +118,7 @@ Marrow renders `.ipynb` files natively—no markdown conversion, no external dep
 | `T` | Toggle Table of Contents |
 | `D` | Toggle Dark/Light theme |
 | `C` | Collapse/expand all cells (notebook only) |
+| `W` | Toggle output line wrapping (notebook only) |
 | `Cmd+F` | Open search |
 | `Enter` | Next search match |
 | `Shift+Enter` | Previous search match |
