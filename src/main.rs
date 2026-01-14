@@ -207,7 +207,7 @@ fn setup_file_watcher(
                 }
             }
         },
-        NotifyConfig::default().with_poll_interval(Duration::from_millis(500)),
+        NotifyConfig::default().with_poll_interval(Duration::from_millis(290)),
     ).ok()?;
 
     // Watch the file's parent directory (more reliable than watching file directly)

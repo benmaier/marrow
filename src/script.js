@@ -407,6 +407,13 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
+    // O to toggle collapse all outputs (notebook only)
+    if (e.key === 'o' && isNotebook) {
+        e.preventDefault();
+        toggleAllOutputs();
+        return;
+    }
+
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     switch(e.key.toLowerCase()) {
@@ -591,6 +598,13 @@ function toggleOutputWrap() {
 
 function applyOutputWrap() {
     document.body.classList.toggle('output-wrapped', outputWrapped);
+}
+
+let outputsCollapsed = false;
+
+function toggleAllOutputs() {
+    outputsCollapsed = !outputsCollapsed;
+    document.body.classList.toggle('outputs-collapsed', outputsCollapsed);
 }
 
 function expandFigure(img) {

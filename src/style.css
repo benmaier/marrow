@@ -530,6 +530,24 @@ body.light .nb-out {
     transform: rotate(-90deg);
 }
 
+/* Outputs collapsed */
+body.outputs-collapsed .nb-output-content {
+    max-height: 60px;
+    overflow: hidden;
+    position: relative;
+}
+
+body.outputs-collapsed .nb-output-content::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: linear-gradient(transparent, var(--bg-primary));
+    pointer-events: none;
+}
+
 /* Code input */
 .nb-input {
     margin-bottom: 8px;
@@ -574,7 +592,7 @@ body.light .nb-out {
 
 /* Text/stream output */
 .nb-output-content {
-    max-height: 300px;
+    max-height: 600px;
     overflow-y: auto;
     overflow-x: auto;
     font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
