@@ -1,5 +1,11 @@
 # TODO
 
+## First Launch Theme Detection
+
+On first launch (when no settings file exists), detect macOS dark/light mode preference and use that as the default theme instead of always defaulting to dark.
+
+Implementation: Use `defaults read -g AppleInterfaceStyle` which returns "Dark" if dark mode is enabled, or returns an error if light mode is active.
+
 ## Markdown Source View Rendering
 
 Currently, the terminal/source view for markdown files is rendered in JavaScript (`highlightMarkdown()` in script.js). This causes a brief flash of unstyled plaintext when the app opens with source view as the saved preference.

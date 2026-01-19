@@ -103,7 +103,9 @@ Fields per extension: `window_width`, `window_height`, `toc_visible`, `view_mode
 - `Tab` - Toggle GitHub/Terminal view (markdown only)
 - `T` - Toggle Table of Contents
 - `D` - Toggle Light/Dark theme
-- `C` - Collapse/expand all cells (notebook only)
+- `C` - Collapse/expand all code cells (notebook only)
+- `O` - Collapse/expand all outputs (notebook only)
+- `W` - Toggle output line wrapping (notebook only)
 - `Cmd+F` - Search
 - `Cmd+C` - Copy as markdown (GitHub view) / formatted (notebook)
 - `Shift+Cmd+C` - Copy formatted HTML
@@ -122,6 +124,12 @@ Hotkeys were changed to avoid vim navigation keys (H/J/K/L).
 
 ## Key Implementation Details
 
+### Live Reload
+- Uses `notify` crate with FSEvents backend on macOS
+- File changes trigger re-rendering via `webview.evaluate_script()`
+- Debounced to avoid excessive reloads on rapid file changes
+- Preserves scroll position and view state during reload
+
 ### Image Expand
 - Both markdown and notebook images scale to max-width: 100%
 - Click any image to expand in overlay
@@ -131,7 +139,8 @@ Hotkeys were changed to avoid vim navigation keys (H/J/K/L).
 ### Notebook Rendering
 - Native HTML rendering (not markdown conversion)
 - KaTeX only renders in `.nb-markdown-cell` elements (not code outputs)
-- Collapse only affects `.nb-input`, outputs stay visible
+- Code collapse (`C`) affects `.nb-input`, outputs stay visible
+- Output collapse (`O`) reduces `.nb-output-content` to 60px with fade overlay
 - ANSI escape codes in error tracebacks converted to colored HTML spans
 - HTML outputs: strip outer `<pre>` wrapper, keep inline styles
 
@@ -152,4 +161,7 @@ Hotkeys were changed to avoid vim navigation keys (H/J/K/L).
 - `sandbox/` contains test files, tracked in git
 
 ## TODO
+See `TODO.md` in project root for detailed technical todos.
+
 - **First launch theme detection**: On first launch (no settings file exists), detect macOS dark/light mode preference and use that as the default theme. Use `defaults read -g AppleInterfaceStyle` (returns "Dark" if dark mode, error if light mode).
+- **Rust-side markdown source highlighting**: Move terminal view syntax highlighting from JS to Rust to eliminate flash on open (see TODO.md for details).

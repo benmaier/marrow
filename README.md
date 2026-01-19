@@ -86,6 +86,7 @@ Press `Cmd+F` to search within the document:
 
 ### Additional Features
 
+- **Live Reload**: Automatically refreshes when the file changes on disk
 - **Font Size Control**: `Cmd+Plus` / `Cmd+Minus` / `Cmd+0` to zoom
 - **Multi-Window**: Open multiple documents, each in its own window
 - **File Associations**: Set Marrow as your default `.md` or `.ipynb` viewer
@@ -104,8 +105,9 @@ Marrow renders `.ipynb` files natively—no markdown conversion, no external dep
 
 **Collapsible Cells**
 - Press `C` to collapse/expand all code cells
+- Press `O` to collapse/expand all outputs
 - Click the `▼` button to toggle individual cells
-- Only code input collapses—outputs stay visible
+- Code input and outputs collapse independently
 
 **Rich Output**
 - Images displayed inline (click to expand)
@@ -123,7 +125,8 @@ Marrow renders `.ipynb` files natively—no markdown conversion, no external dep
 | `Tab` | Toggle GitHub/Terminal view (markdown only) |
 | `T` | Toggle Table of Contents |
 | `D` | Toggle Dark/Light theme |
-| `C` | Collapse/expand all cells (notebook only) |
+| `C` | Collapse/expand all code cells (notebook only) |
+| `O` | Collapse/expand all outputs (notebook only) |
 | `W` | Toggle output line wrapping (notebook only) |
 | `Cmd+F` | Open search |
 | `Enter` | Next search match |
