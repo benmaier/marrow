@@ -1,6 +1,6 @@
 [package]
 name = "marrow"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "A fast markdown viewer with GitHub and terminal rendering modes"
 authors = ["bfmaier"]
