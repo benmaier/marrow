@@ -102,8 +102,21 @@ function getCurrentHeadingId() {
 }
 
 function setMode(mode, scrollToId) {
+    const oldMode = currentMode;
     currentMode = mode;
     const content = document.getElementById('content');
+
+    // Check if search is active and save state before clearing
+    const searchBar = document.getElementById('search-bar');
+    const searchInput = document.getElementById('search-input');
+    const searchActive = !searchBar.classList.contains('hidden') && searchInput.value;
+    const savedScrollRatio = content.scrollHeight > 0 ? content.scrollTop / content.scrollHeight : 0;
+
+    if (searchActive) {
+        // Save current index to old view's state
+        searchIndexPerView[oldMode] = currentMatchIndex;
+        clearHighlights();
+    }
 
     // Hide content while repositioning to prevent flash
     content.style.visibility = 'hidden';
@@ -119,7 +132,19 @@ function setMode(mode, scrollToId) {
     // Wait for browser to render the new view before scrolling
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-            if (scrollToId) {
+            // If search is active, let search handle scroll position
+            // Otherwise, scroll to the heading
+            if (searchActive) {
+                // Use new view's saved index, or fall back to old view's index
+                const restoreIndex = searchIndexPerView[mode] >= 0
+                    ? searchIndexPerView[mode]
+                    : searchIndexPerView[oldMode];
+                const resultCount = performSearch(searchInput.value, restoreIndex);
+                // If no results in new view, preserve scroll position
+                if (resultCount === 0) {
+                    content.scrollTop = savedScrollRatio * content.scrollHeight;
+                }
+            } else if (scrollToId) {
                 const newView = mode === 'github' ? '#github-view' : '#terminal-view';
                 const el = document.querySelector(newView + ' #' + CSS.escape(scrollToId));
                 if (el) {
@@ -432,6 +457,8 @@ document.addEventListener('keydown', function(e) {
 
 let searchMatches = [];
 let currentMatchIndex = -1;
+// Store search index per view so switching views preserves position
+let searchIndexPerView = { github: -1, terminal: -1 };
 
 function openSearch() {
     const searchBar = document.getElementById('search-bar');
@@ -445,6 +472,8 @@ function closeSearch() {
     clearHighlights();
     document.getElementById('search-input').value = '';
     document.getElementById('search-count').textContent = '';
+    // Reset per-view indices
+    searchIndexPerView = { github: -1, terminal: -1 };
 }
 
 function clearHighlights() {
@@ -457,11 +486,11 @@ function clearHighlights() {
     currentMatchIndex = -1;
 }
 
-function performSearch(query) {
+function performSearch(query, restoreIndex = -1) {
     clearHighlights();
     if (!query || query.length < 2) {
         document.getElementById('search-count').textContent = '';
-        return;
+        return 0;
     }
 
     const activeView = document.querySelector(getActiveViewSelector());
@@ -502,9 +531,15 @@ function performSearch(query) {
     });
 
     searchMatches = Array.from(document.querySelectorAll('mark.search-highlight'));
-    currentMatchIndex = searchMatches.length > 0 ? 0 : -1;
+    if (restoreIndex >= 0 && searchMatches.length > 0) {
+        // Clamp to new match count
+        currentMatchIndex = Math.min(restoreIndex, searchMatches.length - 1);
+    } else {
+        currentMatchIndex = searchMatches.length > 0 ? 0 : -1;
+    }
     updateSearchCount();
     highlightCurrentMatch();
+    return searchMatches.length;
 }
 
 function updateSearchCount() {
@@ -538,6 +573,8 @@ function searchPrev() {
 
 // Search input handler
 document.getElementById('search-input').addEventListener('input', function(e) {
+    // Reset per-view indices when query changes
+    searchIndexPerView = { github: -1, terminal: -1 };
     performSearch(e.target.value);
 });
 
