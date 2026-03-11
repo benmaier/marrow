@@ -8,10 +8,14 @@ let fontSizeLevel = initialSettings.font_size_level || 0;
 let currentTheme = initialSettings.theme || 'dark';
 let cellsCollapsedPref = initialSettings.cells_collapsed || false;
 let outputWrapped = initialSettings.output_wrapped || false;
+let mathEnabled = initialSettings.math_enabled !== false;
 const currentExtension = initialSettings.extension || 'md';
 const isNotebook = currentExtension === 'ipynb';
 const TOC_WIDTH = 200;
 const BASE_FONT_SIZE = 15;
+
+// Cache github view HTML before KaTeX modifies it (script.js loads before KaTeX render)
+let lastGithubHtml = document.getElementById('github-view')?.innerHTML || '';
 const TERMINAL_BASE_SIZE = 11;
 
 // ============================================================================
@@ -31,7 +35,8 @@ function saveSettings() {
             font_size_level: fontSizeLevel,
             theme: currentTheme,
             cells_collapsed: cellsCollapsed,
-            output_wrapped: outputWrapped
+            output_wrapped: outputWrapped,
+            math_enabled: mathEnabled
         };
         // Include extension in message format: save_settings:ext:{json}
         window.ipc.postMessage('save_settings:' + currentExtension + ':' + JSON.stringify(settings));
@@ -67,6 +72,25 @@ function setTheme(theme) {
 
 function toggleTheme() {
     setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+}
+
+function toggleMath() {
+    mathEnabled = !mathEnabled;
+    const githubView = document.getElementById('github-view');
+    if (githubView && lastGithubHtml) {
+        githubView.innerHTML = lastGithubHtml;
+        if (mathEnabled && typeof renderMathInElement !== 'undefined') {
+            renderMathInElement(githubView, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false}
+                ],
+                throwOnError: false
+            });
+        }
+        initCodeBlocks();
+    }
+    saveSettings();
 }
 
 // ============================================================================
@@ -376,7 +400,9 @@ document.addEventListener('keydown', function(e) {
                 return;
             }
         }
-        // Let default copy happen for terminal view or if no markdown found
+        // Explicitly trigger copy for terminal view or if no markdown found
+        // (wry WebView doesn't propagate default Cmd+C)
+        document.execCommand('copy');
         return;
     }
 
@@ -447,6 +473,9 @@ document.addEventListener('keydown', function(e) {
             break;
         case 'd':
             toggleTheme();
+            break;
+        case 'm':
+            if (!isNotebook) toggleMath();
             break;
     }
 });
@@ -1045,8 +1074,9 @@ function reloadContent(newHtml, newTocHtml, isNotebookReload, newTerminalHtml) {
         const terminalView = document.getElementById('terminal-view');
         if (githubView) {
             githubView.innerHTML = newHtml;
-            // Re-render KaTeX math
-            if (typeof renderMathInElement !== 'undefined') {
+            lastGithubHtml = newHtml;
+            // Re-render KaTeX math if enabled
+            if (mathEnabled && typeof renderMathInElement !== 'undefined') {
                 renderMathInElement(githubView, {
                     delimiters: [
                         {left: '$$', right: '$$', display: true},

@@ -43,7 +43,11 @@ struct Settings {
     cells_collapsed: bool,
     #[serde(default)]
     output_wrapped: bool,
+    #[serde(default = "default_true")]
+    math_enabled: bool,
 }
+
+fn default_true() -> bool { true }
 
 impl Default for Settings {
     fn default() -> Self {
@@ -56,6 +60,7 @@ impl Default for Settings {
             theme: "dark".to_string(),
             cells_collapsed: false,
             output_wrapped: false,
+            math_enabled: true,
         }
     }
 }

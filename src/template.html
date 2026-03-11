@@ -34,6 +34,7 @@
         <span><kbd>Tab</kbd> Raw/Formatted</span>
         <span><kbd>T</kbd> ToC</span>
         <span><kbd>D</kbd> ☾/☀</span>
+        <span><kbd>M</kbd> Math</span>
         <span><kbd>⌘C</kbd> Copy Raw Markdown</span>
         <span><kbd>⇧⌘C</kbd> Copy Formatted</span>
     </div>
@@ -51,9 +52,9 @@
     <script>const initialSettings = {settings};</script>
     <script>{js}</script>
     <script>
-        // Render math in github-view (for markdown files)
+        // Render math in github-view (for markdown files) if enabled
         const githubView = document.getElementById('github-view');
-        if (githubView) {
+        if (githubView && initialSettings.math_enabled !== false) {
             renderMathInElement(githubView, {
                 delimiters: [
                     {left: '$$', right: '$$', display: true},
