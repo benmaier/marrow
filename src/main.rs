@@ -253,11 +253,24 @@ fn reload_file_content(app_window: &AppWindow) -> Option<String> {
         let toc_html = build_toc_html(&toc);
         // Terminal view needs escaped raw content
         let terminal_content = html_escape(&content);
+        // Rebuild markdownLines array for copy handler
+        let markdown_lines_json: String = content
+            .lines()
+            .map(|line| {
+                let escaped = line
+                    .replace('\\', "\\\\")
+                    .replace('"', "\\\"")
+                    .replace('\t', "\\t");
+                format!("\"{}\"", escaped)
+            })
+            .collect::<Vec<_>>()
+            .join(",");
         Some(format!(
-            "reloadContent({}, {}, false, {})",
+            "reloadContent({}, {}, false, {}, [{}])",
             serde_json::to_string(&html_content).unwrap_or_default(),
             serde_json::to_string(&toc_html).unwrap_or_default(),
             serde_json::to_string(&terminal_content).unwrap_or_default(),
+            markdown_lines_json,
         ))
     }
 }

@@ -1043,7 +1043,7 @@ function slugify(text) {
  * @param {boolean} isNotebookReload - Whether this is a notebook file
  * @param {string} newTerminalHtml - For markdown: new terminal view content (optional)
  */
-function reloadContent(newHtml, newTocHtml, isNotebookReload, newTerminalHtml) {
+function reloadContent(newHtml, newTocHtml, isNotebookReload, newTerminalHtml, newMarkdownLines) {
     const content = document.getElementById('content');
     const scrollTop = content.scrollTop;
     const scrollHeight = content.scrollHeight;
@@ -1088,6 +1088,9 @@ function reloadContent(newHtml, newTocHtml, isNotebookReload, newTerminalHtml) {
         }
         if (terminalView && newTerminalHtml) {
             terminalView.innerHTML = newTerminalHtml;
+        }
+        if (newMarkdownLines) {
+            markdownLines = newMarkdownLines;
         }
         // Re-initialize markdown features
         initCodeBlocks();
