@@ -1379,7 +1379,10 @@ fn markdown_to_html(markdown: &str, base_dir: Option<&std::path::Path>) -> Strin
             }
             Event::End(TagEnd::Paragraph) => {
                 if let (Some(start), Some(_)) = (block_start_line, &pending_block_tag) {
+                    // Empty paragraph — tag was never flushed by inline content.
                     html_output.push_str(&format!(r#"<p data-lines="{}-{}">"#, start, end_line));
+                } else if let Some(pos) = html_output.rfind("__P_END__") {
+                    html_output.replace_range(pos..pos + 9, &end_line.to_string());
                 }
                 html_output.push_str("</p>\n");
                 block_start_line = None;
@@ -1706,9 +1709,11 @@ fn markdown_to_html(markdown: &str, base_dir: Option<&std::path::Path>) -> Strin
     html_output
 }
 
-fn flush_pending_tag(output: &mut String, tag: &Option<String>, start_line: Option<usize>, end_line: usize) {
+fn flush_pending_tag(output: &mut String, tag: &Option<String>, start_line: Option<usize>, _end_line: usize) {
     if let (Some(tag), Some(start)) = (tag, start_line) {
-        output.push_str(&format!(r#"<{} data-lines="{}-{}">"#, tag, start, end_line));
+        // Use placeholder for end line — paragraph's actual end is unknown until End(Paragraph).
+        // Replaced in End(Paragraph) handler.
+        output.push_str(&format!(r#"<{} data-lines="{}-__P_END__">"#, tag, start));
     }
 }
 
